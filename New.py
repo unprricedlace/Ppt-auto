@@ -19,6 +19,15 @@ def compare_ppts(ppt1_path, ppt2_path, output_path):
     # Save modified PPT2
     pres2.save(output_path, slides.export.SaveFormat.PPTX)
 
+def format_table_as_new(table):
+    for row in table.rows:
+        for cell in row:
+            for paragraph in cell.text_frame.paragraphs:
+                for portion in paragraph.portions:
+                    # Set text color to blue but keep other formatting
+                    portion.portion_format.fill_format.fill_type = slides.FillType.SOLID
+                    portion.portion_format.fill_format.solid_fill_color.color = slides.Color.BLUE
+
 def compare_shapes(slide1, slide2):
     # Track matched shapes to avoid duplicates
     matched_shapes = set()
