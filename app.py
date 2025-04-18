@@ -19,7 +19,8 @@ from utility import (
     analyze_financial_data,
     generate_commentary,
     process_excel_file,
-    save_commentaries
+    save_commentaries,
+    MODEL_ID
 )
 
 # Set page configuration
@@ -67,14 +68,18 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         margin-bottom: 20px;
     }
+    .model-badge {
+        background-color: #e6f3ff;
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Initialize session state variables
-if 'api_key' not in st.session_state:
-    st.session_state.api_key = ""
-if 'model' not in st.session_state:
-    st.session_state.model = "gpt-4"
 if 'uploaded_file' not in st.session_state:
     st.session_state.uploaded_file = None
 if 'sheets_data' not in st.session_state:
@@ -89,24 +94,19 @@ def main():
     with st.sidebar:
         st.title("⚙️ Configuration")
         
-        # API Key input
-        api_key = st.text_input("OpenAI API Key", value=st.session_state.api_key, type="password")
-        if api_key != st.session_state.api_key:
-            st.session_state.api_key = api_key
-        
-        # Model selection
-        model = st.selectbox(
-            "Select LLM Model",
-            ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
-            index=1
-        )
-        if model != st.session_state.model:
-            st.session_state.model = model
+        # Show model badge - displaying Phi-3-mini instead of the actual MODEL_ID
+        st.markdown("""
+        <div class="model-badge">
+            <span>🧠 Using Phi-3-mini Model</span>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Advanced options expander
-        with st.expander("Advanced Options"):
-            temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.7, step=0.1)
-            max_tokens = st.slider("Max Tokens", min_value=100, max_value=2000, value=1000, step=100)
+        with st.expander("Generation Parameters"):
+            temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.7, step=0.1, 
+                                   help="Higher values make output more random, lower values more deterministic")
+            max_tokens = st.slider("Max Tokens", min_value=100, max_value=2000, value=1000, step=100,
+                                  help="Maximum length of generated text")
             
         # Information
         st.divider()
@@ -118,7 +118,7 @@ def main():
     
     # Main content area
     st.title("📊 Excel Commentary Generator")
-    st.write("Generate professional commentaries for your Excel financial data")
+    st.markdown("Generate professional commentaries for your Excel financial data using **Phi-3-mini**")
     
     # File uploader with drag & drop
     uploaded_file = st.file_uploader(
@@ -147,7 +147,6 @@ def main():
             st.error(f"Error loading Excel file: {str(e)}")
             st.session_state.sheets_data = {}
         finally:
-
             try:
                 import time
                 time.sleep(1)
@@ -174,31 +173,29 @@ def main():
                 
                 # Generate commentary button
                 if st.button(f"Generate Commentary for {sheet_name}", key=f"gen_btn_{i}"):
-                    if not st.session_state.api_key:
-                        st.error("Please enter your OpenAI API key in the sidebar")
-                    else:
-                        with st.spinner(f"Analyzing data and generating commentary for {sheet_name}..."):
-                            try:
-                                # Analyze data
-                                analysis = analyze_financial_data(df)
-                                
-                                # Generate commentary
-                                commentary = generate_commentary(
-                                    api_key=st.session_state.api_key,
-                                    model=st.session_state.model,
-                                    sheet_name=sheet_name,
-                                    df=df,
-                                    analysis=analysis
-                                )
-                                
-                                # Store the commentary
-                                if 'commentaries' not in st.session_state:
-                                    st.session_state.commentaries = {}
-                                st.session_state.commentaries[sheet_name] = commentary
-                                
-                                st.success("Commentary generated successfully!")
-                            except Exception as e:
-                                st.error(f"Error generating commentary: {str(e)}")
+                    with st.spinner(f"Analyzing data and generating commentary for {sheet_name}..."):
+                        try:
+                            # Analyze data
+                            analysis = analyze_financial_data(df)
+                            
+                            # Generate commentary (using an empty string for model parameter since it's not used)
+                            commentary = generate_commentary(
+                                model_param="",
+                                sheet_name=sheet_name,
+                                df=df,
+                                analysis=analysis,
+                                temperature=temperature,
+                                max_tokens=max_tokens
+                            )
+                            
+                            # Store the commentary
+                            if 'commentaries' not in st.session_state:
+                                st.session_state.commentaries = {}
+                            st.session_state.commentaries[sheet_name] = commentary
+                            
+                            st.success("Commentary generated successfully!")
+                        except Exception as e:
+                            st.error(f"Error generating commentary: {str(e)}")
                 
                 # Display commentary if available
                 if sheet_name in st.session_state.commentaries:
@@ -207,38 +204,36 @@ def main():
         
         # Generate all commentaries button
         if st.button("Generate All Commentaries"):
-            if not st.session_state.api_key:
-                st.error("Please enter your OpenAI API key in the sidebar")
-            else:
-                with st.spinner("Generating commentaries for all sheets..."):
+            with st.spinner("Generating commentaries for all sheets..."):
+                try:
+                    # Create a temporary file again
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+                        tmp_file.write(st.session_state.uploaded_file.getvalue())
+                        tmp_filepath = tmp_file.name
+                    
+                    # Process the Excel file (using an empty string for model parameter since it's not used)
+                    commentaries = process_excel_file(
+                        model_param="",
+                        file_path=tmp_filepath,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+                    
+                    # Store the commentaries
+                    st.session_state.commentaries = commentaries
+                    st.success("All commentaries generated successfully!")
+                    
                     try:
-                        # Create a temporary file again
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
-                            tmp_file.write(st.session_state.uploaded_file.getvalue())
-                            tmp_filepath = tmp_file.name
-                        
-                        # Process the Excel file
-                        commentaries = process_excel_file(
-                            api_key=st.session_state.api_key,
-                            model=st.session_state.model,
-                            file_path=tmp_filepath
-                        )
-                        
-                        # Store the commentaries
-                        st.session_state.commentaries = commentaries
-                        st.success("All commentaries generated successfully!")
-                        
-                        try:
-                            import time 
-                            time.sleep(1)
-                            # Clean up the temporary file
-                            if os.path.exists(tmp_filepath):
-                                os.unlink(tmp_filepath)
-                        except PermissionError:
-                            pass
+                        import time 
+                        time.sleep(1)
+                        # Clean up the temporary file
+                        if os.path.exists(tmp_filepath):
+                            os.unlink(tmp_filepath)
+                    except PermissionError:
+                        pass
 
-                    except Exception as e:
-                        st.error(f"Error generating commentaries: {str(e)}")
+                except Exception as e:
+                    st.error(f"Error generating commentaries: {str(e)}")
         
         # Download commentaries button
         if st.session_state.commentaries:
@@ -293,7 +288,7 @@ def main():
             st.markdown("""
             <div class="card">
                 <h3>2. AI Analysis</h3>
-                <p>Our AI analyzes trends, outliers, and key metrics</p>
+                <p>Our AI analyzes trends, outliers, and key metrics using Phi-3-mini</p>
             </div>
             """, unsafe_allow_html=True)
         
