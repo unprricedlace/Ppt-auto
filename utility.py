@@ -10,10 +10,11 @@ import numpy as np
 import json
 import logging
 import sys
+import torch
 from datetime import datetime
 from typing import Dict, List, Any, Union
-# import openai
 from functools import partial
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # Set up logging
 logging.basicConfig(
@@ -25,6 +26,13 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Model ID - hardcoded since we're only using one model
+MODEL_ID = "microsoft/phi-3-mini-4k-instruct"
+
+# Global variables for model and tokenizer caching
+model = None
+tokenizer = None
 
 def load_excel_file(file_path: str) -> Dict[str, pd.DataFrame]:
     """
@@ -38,8 +46,7 @@ def load_excel_file(file_path: str) -> Dict[str, pd.DataFrame]:
     """
     logger.info(f"Loading Excel file: {file_path}")
     try:
-        with pd.ExcelFile(file_path) as excel_file :
-        
+        with pd.ExcelFile(file_path) as excel_file:
             # Use dictionary comprehension for a more functional approach
             sheets = {
                 sheet_name: pd.read_excel(excel_file, sheet_name=sheet_name)
@@ -224,6 +231,11 @@ def create_prompt(sheet_name: str, df: pd.DataFrame, analysis: Dict[str, Any]) -
     clean_analysis = clean_for_json(analysis)
     
     prompt = f"""
+    <|system|>
+    You are a financial analyst tasked with writing insightful commentary for executive reports based on Excel data analysis.
+    </|system|>
+    
+    <|user|>
     Write an executive summary commentary for a financial report sheet named "{sheet_name}".
     
     The data has the following columns: {columns}
@@ -243,54 +255,95 @@ def create_prompt(sheet_name: str, df: pd.DataFrame, analysis: Dict[str, Any]) -
     
     Keep the tone professional but accessible. Use specific numbers from the analysis to support your points.
     Format the commentary in paragraphs suitable for inclusion in an executive presentation.
+    </|user|>
+    
+    <|assistant|>
     """
     
     return prompt
 
-def generate_commentary(api_key: str, model: str, sheet_name: str, df: pd.DataFrame, analysis: Dict[str, Any]) -> str:
-    # """
-    # Generate commentary for a sheet based on analysis results.
+def load_model_and_tokenizer():
+    """
+    Load the model and tokenizer if they haven't been loaded yet.
     
-    # Args:
-    #     api_key: API key for the LLM service
-    #     model: Model name to use
-    #     sheet_name: Name of the Excel sheet
-    #     df: DataFrame containing the sheet's data
-    #     analysis: Analysis results from analyze_financial_data
-        
-    # Returns:
-    #     Generated commentary text
-    # """
-    # logger.info(f"Generating commentary for sheet: {sheet_name}")
+    Returns:
+        tuple: (model, tokenizer)
+    """
+    global model, tokenizer
     
-    # # Set API key
-    # openai.api_key = api_key
+    if model is None or tokenizer is None:
+        try:
+            logger.info(f"Loading model and tokenizer: {MODEL_ID}")
+            
+            # Load tokenizer
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+            
+            # Load model with optimizations
+            model = AutoModelForCausalLM.from_pretrained(
+                MODEL_ID,
+                torch_dtype=torch.float16,  # Use half precision for efficiency
+                device_map="auto"  # Use GPU if available
+            )
+            
+            logger.info("Model and tokenizer loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading model: {str(e)}")
+            raise
     
-    # # Prepare input for the LLM
-    # prompt = create_prompt(sheet_name, df, analysis)
-    
-    # try:
-    #     # Call the LLM API
-    #     response = openai.ChatCompletion.create(
-    #         model=model,
-    #         messages=[
-    #             {"role": "system", "content": "You are a financial analyst tasked with writing insightful commentary for executive reports based on Excel data analysis."},
-    #             {"role": "user", "content": prompt}
-    #         ],
-    #         max_tokens=1000,
-    #         temperature=0.7
-    #     )
-        
-    #     commentary = response.choices[0].message.content
-    #     logger.info(f"Successfully generated commentary ({len(commentary)} chars)")
-    #     return commentary
-        
-    # except Exception as e:
-    #     logger.error(f"Error generating commentary: {e}")
-    #     return f"Error generating commentary: {str(e)}"
-    pass
+    return model, tokenizer
 
-def process_sheet(api_key: str, model: str, sheet_name: str, df: pd.DataFrame) -> str:
+def generate_commentary(model_param: str, sheet_name: str, df: pd.DataFrame, analysis: Dict[str, Any], 
+                       temperature: float = 0.7, max_tokens: int = 1000) -> str:
+    """
+    Generate commentary for a sheet based on analysis results using AutoModelForCausalLM.
+    
+    Args:
+        model_param: Placeholder parameter for compatibility (ignored)
+        sheet_name: Name of the Excel sheet
+        df: DataFrame containing the sheet's data
+        analysis: Analysis results from analyze_financial_data
+        temperature: Temperature parameter for generation
+        max_tokens: Maximum tokens to generate
+        
+    Returns:
+        Generated commentary text
+    """
+    logger.info(f"Generating commentary for sheet: {sheet_name}")
+    
+    # Prepare input for the LLM
+    prompt = create_prompt(sheet_name, df, analysis)
+    
+    try:
+        # Load model and tokenizer
+        model, tokenizer = load_model_and_tokenizer()
+        
+        # Tokenize prompt
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        
+        # Generate text
+        with torch.no_grad():
+            outputs = model.generate(
+                inputs.input_ids,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                do_sample=True,
+                pad_token_id=tokenizer.eos_token_id
+            )
+        
+        # Decode the generated tokens
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Extract the assistant's response
+        commentary = generated_text.split("<|assistant|>")[-1].strip()
+        
+        logger.info(f"Successfully generated commentary ({len(commentary)} chars)")
+        return commentary
+        
+    except Exception as e:
+        logger.error(f"Error generating commentary: {e}")
+        return f"Error generating commentary: {str(e)}"
+
+def process_sheet(model_param: str, sheet_name: str, df: pd.DataFrame, temperature: float = 0.7, max_tokens: int = 1000) -> str:
     """Process a single sheet and generate commentary."""
     # Skip sheets with no data
     if df.empty:
@@ -299,17 +352,18 @@ def process_sheet(api_key: str, model: str, sheet_name: str, df: pd.DataFrame) -
     # Analyze the data
     analysis = analyze_financial_data(df)
     
-    # Generate commentary
-    return generate_commentary(api_key, model, sheet_name, df, analysis)
+    # Generate commentary (model_param parameter is kept for compatibility)
+    return generate_commentary(model_param, sheet_name, df, analysis, temperature, max_tokens)
 
-def process_excel_file(api_key: str, model: str, file_path: str) -> Dict[str, str]:
+def process_excel_file(model_param: str, file_path: str, temperature: float = 0.7, max_tokens: int = 1000) -> Dict[str, str]:
     """
     Process an Excel file and generate commentary for all sheets.
     
     Args:
-        api_key: API key for the LLM service
-        model: Model name to use
+        model_param: Model name parameter (kept for compatibility)
         file_path: Path to the Excel file
+        temperature: Temperature parameter for generation
+        max_tokens: Maximum tokens to generate
         
     Returns:
         Dictionary mapping sheet names to commentaries
@@ -320,7 +374,7 @@ def process_excel_file(api_key: str, model: str, file_path: str) -> Dict[str, st
     sheets = load_excel_file(file_path)
     
     # Create a partially applied function for processing sheets
-    process_sheet_with_params = partial(process_sheet, api_key, model)
+    process_sheet_with_params = partial(process_sheet, model_param, temperature=temperature, max_tokens=max_tokens)
     
     # Generate commentary for each sheet using dictionary comprehension
     commentaries = {
