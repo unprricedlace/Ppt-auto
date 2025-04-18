@@ -12,6 +12,7 @@ import os
 import tempfile
 from datetime import datetime
 
+
 # Import functions from utility.py
 from utility import (
     load_excel_file,
@@ -146,9 +147,15 @@ def main():
             st.error(f"Error loading Excel file: {str(e)}")
             st.session_state.sheets_data = {}
         finally:
-            # Clean up the temporary file
-            if os.path.exists(tmp_filepath):
-                os.unlink(tmp_filepath)
+
+            try:
+                import time
+                time.sleep(1)
+                # Clean up the temporary file
+                if os.path.exists(tmp_filepath):
+                    os.unlink(tmp_filepath)
+            except PermissionError:
+                pass
     
     # If we have sheets data, display them
     if st.session_state.sheets_data:
@@ -221,9 +228,15 @@ def main():
                         st.session_state.commentaries = commentaries
                         st.success("All commentaries generated successfully!")
                         
-                        # Clean up the temporary file
-                        if os.path.exists(tmp_filepath):
-                            os.unlink(tmp_filepath)
+                        try:
+                            import time 
+                            time.sleep(1)
+                            # Clean up the temporary file
+                            if os.path.exists(tmp_filepath):
+                                os.unlink(tmp_filepath)
+                        except PermissionError:
+                            pass
+
                     except Exception as e:
                         st.error(f"Error generating commentaries: {str(e)}")
         
