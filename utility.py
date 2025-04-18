@@ -3,13 +3,6 @@ utility.py - Excel Commentary Generator Utility Functions
 
 This module contains the core functionality for the Excel Commentary Generator,
 implemented using functional programming principles.
-
-PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\d650876\\AppData\\Local\\Temp\\7\\tmpg9n_clnr.xlsx'
-Traceback:
-File "H:\app\commentary\app.py", line 298, in <module>
-    main()
-File "H:\app\commentary\app.py", line 153, in main
-    os.unlink(tmp_filepath)
 """
 
 import pandas as pd
@@ -19,7 +12,7 @@ import logging
 import sys
 from datetime import datetime
 from typing import Dict, List, Any, Union
-import openai
+# import openai
 from functools import partial
 
 # Set up logging
@@ -45,13 +38,13 @@ def load_excel_file(file_path: str) -> Dict[str, pd.DataFrame]:
     """
     logger.info(f"Loading Excel file: {file_path}")
     try:
-        excel_file = pd.ExcelFile(file_path)
+        with pd.ExcelFile(file_path) as excel_file :
         
-        # Use dictionary comprehension for a more functional approach
-        sheets = {
-            sheet_name: pd.read_excel(excel_file, sheet_name=sheet_name)
-            for sheet_name in excel_file.sheet_names
-        }
+            # Use dictionary comprehension for a more functional approach
+            sheets = {
+                sheet_name: pd.read_excel(excel_file, sheet_name=sheet_name)
+                for sheet_name in excel_file.sheet_names
+            }
         
         # Log information
         for sheet_name, df in sheets.items():
@@ -255,46 +248,47 @@ def create_prompt(sheet_name: str, df: pd.DataFrame, analysis: Dict[str, Any]) -
     return prompt
 
 def generate_commentary(api_key: str, model: str, sheet_name: str, df: pd.DataFrame, analysis: Dict[str, Any]) -> str:
-    """
-    Generate commentary for a sheet based on analysis results.
+    # """
+    # Generate commentary for a sheet based on analysis results.
     
-    Args:
-        api_key: API key for the LLM service
-        model: Model name to use
-        sheet_name: Name of the Excel sheet
-        df: DataFrame containing the sheet's data
-        analysis: Analysis results from analyze_financial_data
+    # Args:
+    #     api_key: API key for the LLM service
+    #     model: Model name to use
+    #     sheet_name: Name of the Excel sheet
+    #     df: DataFrame containing the sheet's data
+    #     analysis: Analysis results from analyze_financial_data
         
-    Returns:
-        Generated commentary text
-    """
-    logger.info(f"Generating commentary for sheet: {sheet_name}")
+    # Returns:
+    #     Generated commentary text
+    # """
+    # logger.info(f"Generating commentary for sheet: {sheet_name}")
     
-    # Set API key
-    openai.api_key = api_key
+    # # Set API key
+    # openai.api_key = api_key
     
-    # Prepare input for the LLM
-    prompt = create_prompt(sheet_name, df, analysis)
+    # # Prepare input for the LLM
+    # prompt = create_prompt(sheet_name, df, analysis)
     
-    try:
-        # Call the LLM API
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are a financial analyst tasked with writing insightful commentary for executive reports based on Excel data analysis."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=1000,
-            temperature=0.7
-        )
+    # try:
+    #     # Call the LLM API
+    #     response = openai.ChatCompletion.create(
+    #         model=model,
+    #         messages=[
+    #             {"role": "system", "content": "You are a financial analyst tasked with writing insightful commentary for executive reports based on Excel data analysis."},
+    #             {"role": "user", "content": prompt}
+    #         ],
+    #         max_tokens=1000,
+    #         temperature=0.7
+    #     )
         
-        commentary = response.choices[0].message.content
-        logger.info(f"Successfully generated commentary ({len(commentary)} chars)")
-        return commentary
+    #     commentary = response.choices[0].message.content
+    #     logger.info(f"Successfully generated commentary ({len(commentary)} chars)")
+    #     return commentary
         
-    except Exception as e:
-        logger.error(f"Error generating commentary: {e}")
-        return f"Error generating commentary: {str(e)}"
+    # except Exception as e:
+    #     logger.error(f"Error generating commentary: {e}")
+    #     return f"Error generating commentary: {str(e)}"
+    pass
 
 def process_sheet(api_key: str, model: str, sheet_name: str, df: pd.DataFrame) -> str:
     """Process a single sheet and generate commentary."""
