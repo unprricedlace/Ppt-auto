@@ -3,6 +3,13 @@ utility.py - Excel Commentary Generator Utility Functions
 
 This module contains the core functionality for the Excel Commentary Generator,
 implemented using functional programming principles.
+
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\d650876\\AppData\\Local\\Temp\\7\\tmpg9n_clnr.xlsx'
+Traceback:
+File "H:\app\commentary\app.py", line 298, in <module>
+    main()
+File "H:\app\commentary\app.py", line 153, in main
+    os.unlink(tmp_filepath)
 """
 
 import pandas as pd
