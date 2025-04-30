@@ -11,6 +11,19 @@ CAO Learning Office	0	0
 CAO Strategy & Process Improvement	0	0
 
 
+Expense Details	Current Month (February '2025) Actuals	Current Month (February '2025) Budget	Current Month (February '2025) O/U	Current Month (February '2025) O/U(%)	YTD '25 Actuals	YTD '25 Budget	YTD '25 O/U	YTD '25 O/U(%)	Full Year '25 Actuals	Full Year '25 Budget	Full Year '25 O/U	Full Year '25 O/U(%)
+Compensation	11951	12164	-213	-2	23635	24513	-878	4	148760	148706	54	
+Non-Compensation	617	459	158	34	1122	919	203	22	7931	5519	2412	44
+Direct Expense	12568	12624	-56		24757	25432	-675	3	156691	154225	2466	
+Direct Exp w/o Severance	12568	12624	-56		24757	25432	-675	3	156691	154225	2466	
+Allocations	1523	1509	14	1	3040	3019	21	1	17041	17193	-152	
+Total Expense	14091	14132	-41		27797	28451	-654	2	173732	171418	2314	
+Employees	1379	1402	-23	-2	1379	1402	-23	2	1441	1441	0	
+Contractors	58	35	23	66	58	35	23	66	55	35	20	57
+Total Headcount	1437	1437	0		1437	1437	0		1496	1476	20	1
+
+
+
 
 
 
