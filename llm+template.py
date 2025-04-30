@@ -1,3 +1,22 @@
+Cost Center	Cost Center Name	Month	Lowest Cost Center Number	Lowest LOB	LOB0 Number	LOB0 Name	LOB1 Number	LOB1 Name	LOB2 Number	LOB2 Name	LOB3 Number	LOB3 Name	LOB4 Number	LOB4 Name	LOB5 Number	LOB5 Name	LOB6 Number	LOB6 Name	LOB7 Number	LOB7 Name	LOB8 Number	LOB8 Name	LOB9 Number	LOB9 Name	LOB10 Number	LOB10 Name	LOB11 Number	LOB11 Name	LOB12 Number	LOB12 Name	LOB13 Number	LOB13 Name	CITY NM	STATE NM	COUNTRY NM	REGION	Custom Region	Expense Details	 Null 	CY Outlook	CY Plan	FY Plan	FY2 Plan	PY Actuals	Current Month	CY CM Actuals	CY CM Budget	Date	Current Date	Full Year PY Actuals	Full Year CY Outlook	Full Year CY Plan	Full Year FY Plan	Full Year FY2 Plan	YTD PY Actuals	YTD CY Outlook	YTD CY Plan	YTD FY Plan	YTD FY2 Plan	YTD CY Outlook Average	YTD CY Plan Average	Functions	Appendix Filter Level	EMR Report Name	Regional EMR Report Name	Location EMR Report Name	Geneva Flag	Alternate Hierarchy Function	Managed/Non-Managed	India Managed/Non-Managed	File Type
+Row Labels	Sum of CY CM Actuals	Sum of CY CM Budget
+All Other Expense	0	0
+Allocations	0	0
+Amenities Services	0.37884	0
+ASSET AND WEALTH MANAGEMENT ALLOCATIONS	0	0
+Audit	0	0
+Aviation	0	0
+CAO Administration	0.11272	0
+CAO Learning Office	0	0
+CAO Strategy & Process Improvement	0	0
+
+
+
+
+
+
+
+
 import pandas as pd
 import streamlit as st
 from string import Template
