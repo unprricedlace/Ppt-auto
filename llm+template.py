@@ -22,7 +22,14 @@ Employees	1379	1402	-23	-2	1379	1402	-23	2	1441	1441	0
 Contractors	58	35	23	66	58	35	23	66	55	35	20	57
 Total Headcount	1437	1437	0		1437	1437	0		1496	1476	20	1
 
+Month:
+Direct Expense of $12.6mm is $(56k) under budget mostly driven by lower headcount and higher Vendor spend.
 
+YTD:
+Direct Expense of $24.8mm is $(675k)/(3%) favorable to budget driven mostly by lower headcount and higher Vendor spend.
+
+Full Year:
+Direct Expense of $156.7mm is $2.5mm unfavorable driven by higher Vendor spend, higher Professional Services, and higher Compensation.
 
 
 
