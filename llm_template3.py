@@ -5,349 +5,248 @@ import re
 from io import BytesIO
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-import numpy as np
 
-def load_and_process_summary_data(file):
-    """Load and preprocess the summary Excel data"""
+def load_and_process_data(file):
+    """Load and preprocess the Excel data"""
     try:
-        df = pd.read_excel(file, index_col=0)
+        # First try to read as summary file
+        df_summary = pd.read_excel(file, index_col=0)
         
         # Find current month from column names
         month_pattern = r"Current Month \((.*?)\)"
         current_month = None
-        for col in df.columns:
+        for col in df_summary.columns:
             match = re.search(month_pattern, col)
             if match:
                 current_month = match.group(1)
                 break
         
-        return df, current_month
+        return df_summary, current_month, None
+    
     except Exception as e:
-        st.error(f"Error processing the summary Excel file: {str(e)}")
-        return None, None
-
-def load_and_process_detailed_data(file):
-    """Load and preprocess the detailed Excel data focusing on key columns"""
-    try:
-        df = pd.read_excel(file)
-        
-        # Check for required columns based on the raw data format
-        required_columns = ['Expense Details', 'CY CM Actuals', 'CY CM Budget']
-        
-        # Try to find columns that may have similar names or purposes
-        column_mapping = {}
-        for req_col in required_columns:
-            found = False
-            # Exact match
-            if req_col in df.columns:
-                column_mapping[req_col] = req_col
-                found = True
-            # Check for partial matches for flexibility
-            if not found:
-                for col in df.columns:
-                    if req_col.lower() in col.lower():
-                        column_mapping[req_col] = col
-                        found = True
-                        break
+        st.warning(f"Could not read as summary file, trying raw format: {str(e)}")
+        try:
+            # Try to read as raw file
+            df_raw = pd.read_excel(file)
             
-            if not found and req_col == 'Expense Details':
-                # Try alternative column names for expense details
-                for col in df.columns:
-                    if any(term in col.lower() for term in ["expense", "category", "detail"]):
-                        column_mapping[req_col] = col
-                        found = True
-                        break
-        
-        # Verify we have all required mappings
-        missing_columns = [col for col in required_columns if col not in column_mapping]
-        if missing_columns:
-            st.error(f"The detailed Excel file is missing required columns: {', '.join(missing_columns)}")
-            return None
-        
-        # Create a new dataframe with consistent column names
-        result_df = pd.DataFrame()
-        for req_col, actual_col in column_mapping.items():
-            result_df[req_col] = df[actual_col]
-        
-        return result_df
-    except Exception as e:
-        st.error(f"Error processing the detailed Excel file: {str(e)}")
-        return None
-
-def infer_category_from_subcategory(subcategory):
-    """Infer high-level category from subcategory text"""
-    subcategory_lower = subcategory.lower()
-    
-    # Define common terms for each high-level category
-    category_keywords = {
-        'Compensation': ['salary', 'wage', 'bonus', 'benefit', 'pension', 'healthcare', 'payroll', 'fte', 'headcount', 
-                         'employee', 'hr', 'compensation', 'severance', 'ic payout', 'incentive'],
-        'Non-Compensation': ['travel', 'entertainment', 'vendor', 'professional', 'service', 'software', 'hardware', 
-                             'technology', 'supplies', 'equipment', 'marketing', 'advertising', 'rent', 'lease', 
-                             'utility', 'maintenance', 'repair', 'legal', 'training', 'conference', 'subscription'],
-        'Allocations': ['allocation', 'charge', 'transfer', 'overhead', 'cross-charge', 'share', 'distributed'],
-        'Headcount': ['headcount', 'fte', 'full time', 'part time', 'staff', 'personnel'],
-        'Employees': ['employee', 'permanent', 'staff', 'full-time', 'part-time'],
-        'Contractors': ['contractor', 'consultant', 'temporary', 'contingent', 'freelance', 'outsource']
-    }
-    
-    for category, keywords in category_keywords.items():
-        if any(keyword in subcategory_lower for keyword in keywords):
-            return category
+            # Check if it has the expected raw columns
+            required_columns = ['Expense Details', 'Current Month', 'CY CM Actuals', 
+                              'CY CM Budget', 'Full Year PY Actuals', 'Full Year CY Outlook',
+                              'YTD PY Actuals', 'YTD CY Outlook']
             
-    # Default category inference
-    if "service" in subcategory_lower or "vendor" in subcategory_lower:
-        return "Non-Compensation"
-    elif "headcount" in subcategory_lower or "personnel" in subcategory_lower:
-        return "Compensation"
-        
-    # Default to Non-Compensation if we can't determine
-    return "Non-Compensation"
+            if all(col in df_raw.columns for col in required_columns):
+                # Create pivot table from raw data
+                pivot = pd.pivot_table(df_raw, 
+                                     index='Expense Details',
+                                     values=['Current Month', 'CY CM Actuals', 'CY CM Budget',
+                                            'Full Year PY Actuals', 'Full Year CY Outlook',
+                                            'YTD PY Actuals', 'YTD CY Outlook'],
+                                     aggfunc='sum')
+                
+                # Try to get current month from data (might need adjustment based on actual data)
+                current_month = "February '2025"  # Placeholder - adjust as needed
+                
+                return None, current_month, pivot
+            else:
+                st.error("Uploaded file doesn't match expected raw or summary format")
+                return None, None, None
+                
+        except Exception as e:
+            st.error(f"Error processing the Excel file: {str(e)}")
+            return None, None, None
 
-def create_expense_pivot(detailed_df):
-    """Create a pivot table from the detailed data"""
-    try:
-        # Create a pivot table with Expense Details as rows
-        pivot = pd.pivot_table(
-            detailed_df,
-            values=['CY CM Actuals', 'CY CM Budget'],
-            index=['Expense Details'],
-            aggfunc=np.sum
-        )
-        
-        # Calculate the variance and percentage
-        pivot['Variance'] = pivot['CY CM Actuals'] - pivot['CY CM Budget']
-        pivot['Variance_Pct'] = (pivot['Variance'] / pivot['CY CM Budget']) * 100
-        
-        # Reset index to make Expense Details a column
-        pivot = pivot.reset_index()
-        
-        # Infer category for each subcategory
-        pivot['Category'] = pivot['Expense Details'].apply(infer_category_from_subcategory)
-        
-        # Set multi-level index for better grouping
-        pivot = pivot.set_index(['Category', 'Expense Details'])
-        
-        # Sort by Category and then by absolute variance within each category
-        pivot = pivot.groupby(level=0, group_keys=False).apply(
-            lambda x: x.sort_values(by='Variance', key=abs, ascending=False)
-        )
-        
-        return pivot
-    except Exception as e:
-        st.error(f"Error creating pivot table: {str(e)}")
-        return None
-
-def get_top_drivers_by_category(pivot, limit_per_category=3):
-    """Extract top drivers from each category in the pivot table"""
-    if 'Category' not in pivot.index.names:
-        # If no category in index, return top overall drivers
-        return pivot.head(5), {}
-    
-    # Get categories from the first level of the multi-index
-    categories = pivot.index.get_level_values(0).unique()
-    
-    # Prepare containers for results
-    top_drivers_overall = pd.DataFrame()
-    top_drivers_by_category = {}
-    
-    for category in categories:
-        # Filter pivot for this category
-        category_pivot = pivot.loc[category]
-        
-        # Sort by absolute variance
-        category_pivot = category_pivot.sort_values(by='Variance', key=abs, ascending=False)
-        
-        # Get top drivers for this category
-        top_category_drivers = category_pivot.head(limit_per_category)
-        
-        # Add to overall top drivers
-        top_drivers_overall = pd.concat([top_drivers_overall, top_category_drivers.head(1)])
-        
-        # Store in category dictionary
-        top_drivers_by_category[category] = top_category_drivers
-    
-    # Sort the overall top drivers by absolute variance
-    top_drivers_overall = top_drivers_overall.sort_values(by='Variance', key=abs, ascending=False)
-    
-    return top_drivers_overall, top_drivers_by_category
-
-def extract_metrics(df, current_month):
-    """Extract key metrics from the summary dataframe"""
+def extract_metrics(df_summary, df_raw_pivot, current_month):
+    """Extract key metrics from either summary or raw data"""
     metrics = {}
     
-    # Define time periods and their column prefixes
-    time_periods = {
-        'month': f"Current Month ({current_month})",
-        'ytd': "YTD '25",
-        'full_year': "Full Year '25"
-    }
-    
-    for period, prefix in time_periods.items():
-        try:
-            # Extract core metrics
-            direct_expense_actual = df.loc['Direct Expense', f"{prefix} Actuals"]
-            direct_expense_budget = df.loc['Direct Expense', f"{prefix} Budget"]
-            variance = df.loc['Direct Expense', f"{prefix} O/U"]
-            variance_pct = df.loc['Direct Expense', f"{prefix} O/U(%)"] if f"{prefix} O/U(%)" in df.columns else None
-            
-            # Format for display
-            if period == 'full_year':
-                # Full year is typically in millions
-                direct_expense_formatted = f"{direct_expense_actual/1000:.1f}mm"
-                variance_formatted = f"{abs(variance)/1000:.1f}"  # Converting to millions
-            else:
-                # Month and YTD are typically in thousands
-                direct_expense_formatted = f"{direct_expense_actual/1000:.1f}mm"
-                variance_formatted = f"{abs(variance):.0f}k"
-            
-            # Determine if favorable or unfavorable
-            if period == 'month':
-                direction = "under" if variance < 0 else "over"
-            else:
+    if df_summary is not None:
+        # Process summary data
+        time_periods = {
+            'month': f"Current Month ({current_month})",
+            'ytd': "YTD '25",
+            'full_year': "Full Year '25"
+        }
+        
+        for period, prefix in time_periods.items():
+            try:
+                # Extract core metrics from summary
+                direct_expense_actual = df_summary.loc['Direct Expense', f"{prefix} Actuals"]
+                direct_expense_budget = df_summary.loc['Direct Expense', f"{prefix} Budget"]
+                variance = df_summary.loc['Direct Expense', f"{prefix} O/U"]
+                variance_pct = df_summary.loc['Direct Expense', f"{prefix} O/U(%)"] if f"{prefix} O/U(%)" in df_summary.columns else None
+                
+                # Format for display
+                if period == 'full_year':
+                    direct_expense_formatted = f"{direct_expense_actual/1000:.1f}mm"
+                    variance_formatted = f"{abs(variance)/1000:.1f}mm"
+                else:
+                    direct_expense_formatted = f"{direct_expense_actual/1000:.1f}mm"
+                    variance_formatted = f"{abs(variance):.0f}k"
+                
                 direction = "favorable" if variance < 0 else "unfavorable"
-            
-            # Store metrics
-            metrics[period] = {
-                'direct_expense': direct_expense_formatted,
-                'direct_expense_raw': direct_expense_actual,
-                'budget_variance': variance_formatted,
-                'budget_variance_raw': variance,
-                'variance_direction': direction
-            }
-            
-            # Add percentage for YTD
-            if period == 'ytd' and variance_pct is not None:
-                metrics[period]['budget_variance_pct'] = f"{abs(variance_pct):.0f}%"
-            
-        except Exception as e:
-            st.warning(f"Could not extract all metrics for {period}: {str(e)}")
+                
+                metrics[period] = {
+                    'direct_expense': direct_expense_formatted,
+                    'direct_expense_raw': direct_expense_actual,
+                    'budget_variance': variance_formatted,
+                    'budget_variance_raw': variance,
+                    'variance_direction': direction,
+                    'data_source': 'summary'
+                }
+                
+                if period == 'ytd' and variance_pct is not None:
+                    metrics[period]['budget_variance_pct'] = f"{abs(variance_pct):.0f}%"
+                    
+            except Exception as e:
+                st.warning(f"Could not extract all metrics for {period} from summary: {str(e)}")
+    
+    elif df_raw_pivot is not None:
+        # Process raw data pivot
+        time_periods = {
+            'month': ('CY CM Actuals', 'CY CM Budget'),
+            'ytd': ('YTD CY Outlook', 'YTD PY Actuals'),  # Adjust based on actual mapping
+            'full_year': ('Full Year CY Outlook', 'Full Year PY Actuals')  # Adjust based on actual mapping
+        }
+        
+        for period, (actual_col, budget_col) in time_periods.items():
+            try:
+                # Calculate direct expense as sum of all expense details
+                direct_expense_actual = df_raw_pivot[actual_col].sum()
+                direct_expense_budget = df_raw_pivot[budget_col].sum()
+                variance = direct_expense_actual - direct_expense_budget
+                
+                # Format for display
+                if period == 'full_year':
+                    direct_expense_formatted = f"{direct_expense_actual/1000:.1f}mm"
+                    variance_formatted = f"{abs(variance)/1000:.1f}mm"
+                else:
+                    direct_expense_formatted = f"{direct_expense_actual/1000:.1f}mm"
+                    variance_formatted = f"{abs(variance):.0f}k"
+                
+                direction = "favorable" if variance < 0 else "unfavorable"
+                
+                metrics[period] = {
+                    'direct_expense': direct_expense_formatted,
+                    'direct_expense_raw': direct_expense_actual,
+                    'budget_variance': variance_formatted,
+                    'budget_variance_raw': variance,
+                    'variance_direction': direction,
+                    'data_source': 'raw'
+                }
+                
+                # For YTD, calculate percentage if possible
+                if period == 'ytd' and direct_expense_budget != 0:
+                    variance_pct = (abs(variance) / direct_expense_budget) * 100
+                    metrics[period]['budget_variance_pct'] = f"{variance_pct:.0f}%"
+                    
+            except Exception as e:
+                st.warning(f"Could not extract all metrics for {period} from raw data: {str(e)}")
     
     return metrics
 
-def extract_category_metrics(df, current_month):
-    """Extract metrics for each high-level category from the summary dataframe"""
-    category_metrics = {}
-    
-    # Define time periods and their column prefixes
-    time_periods = {
-        'month': f"Current Month ({current_month})",
-        'ytd': "YTD '25",
-        'full_year': "Full Year '25"
-    }
-    
-    # Major categories to track
-    categories = ['Compensation', 'Non-Compensation', 'Allocations', 'Headcount', 'Employees', 'Contractors']
-    
-    for category in categories:
-        if category in df.index:
-            category_metrics[category] = {}
-            
-            for period, prefix in time_periods.items():
+def prepare_llm_input(df_summary, df_raw_pivot, metrics, current_month, period):
+    """Prepare the data for LLM driver analysis from either source"""
+    if df_summary is not None:
+        # Prepare from summary data
+        prefix = {
+            'month': f"Current Month ({current_month})",
+            'ytd': "YTD '25",
+            'full_year': "Full Year '25"
+        }[period]
+        
+        summary = {
+            'direct_expense': {
+                'actual': df_summary.loc['Direct Expense', f"{prefix} Actuals"],
+                'budget': df_summary.loc['Direct Expense', f"{prefix} Budget"],
+                'variance': df_summary.loc['Direct Expense', f"{prefix} O/U"],
+                'variance_pct': df_summary.loc['Direct Expense', f"{prefix} O/U(%)"] if f"{prefix} O/U(%)" in df_summary.columns else None
+            }
+        }
+        
+        categories = ['Compensation', 'Non-Compensation', 'Allocations', 'Headcount', 'Employees', 'Contractors']
+        category_data = {}
+        
+        for category in categories:
+            if category in df_summary.index:
                 try:
-                    # Extract metrics for this category and period
-                    actual = df.loc[category, f"{prefix} Actuals"]
-                    budget = df.loc[category, f"{prefix} Budget"]
-                    variance = df.loc[category, f"{prefix} O/U"]
-                    variance_pct = df.loc[category, f"{prefix} O/U(%)"] if f"{prefix} O/U(%)" in df.columns else None
-                    
-                    # Determine if favorable or unfavorable
-                    if period == 'month':
-                        direction = "under" if variance < 0 else "over"
-                    else:
-                        direction = "favorable" if variance < 0 else "unfavorable"
-                    
-                    # Format variance for display
-                    if abs(variance) >= 1000 and period == 'full_year':
-                        variance_formatted = f"{variance/1000:.1f}mm"
-                    else:
-                        variance_formatted = f"{variance:.0f}k"
-                    
-                    # Store the metrics
-                    category_metrics[category][period] = {
-                        'actual': actual,
-                        'budget': budget,
-                        'variance': variance,
-                        'variance_formatted': variance_formatted,
-                        'direction': direction
+                    category_data[category] = {
+                        'actual': df_summary.loc[category, f"{prefix} Actuals"],
+                        'budget': df_summary.loc[category, f"{prefix} Budget"],
+                        'variance': df_summary.loc[category, f"{prefix} O/U"],
+                        'variance_pct': df_summary.loc[category, f"{prefix} O/U(%)"] if f"{prefix} O/U(%)" in df_summary.columns else None
                     }
-                    
-                    # Add percentage for YTD if available
-                    if variance_pct is not None:
-                        category_metrics[category][period]['variance_pct'] = variance_pct
-                        
-                except Exception:
-                    # Skip if data is missing
+                except:
                     pass
+        
+        return {
+            'summary': summary,
+            'categories': category_data,
+            'metrics': metrics[period],
+            'data_source': 'summary'
+        }
     
-    return category_metrics
+    elif df_raw_pivot is not None:
+        # Prepare from raw data pivot
+        col_mapping = {
+            'month': ('CY CM Actuals', 'CY CM Budget'),
+            'ytd': ('YTD CY Outlook', 'YTD PY Actuals'),
+            'full_year': ('Full Year CY Outlook', 'Full Year PY Actuals')
+        }
+        
+        actual_col, budget_col = col_mapping[period]
+        
+        # Get top contributors to variance
+        df_variance = df_raw_pivot.copy()
+        df_variance['variance'] = df_variance[actual_col] - df_variance[budget_col]
+        df_variance['abs_variance'] = df_variance['variance'].abs()
+        
+        # Get top 5 contributors by absolute variance
+        top_contributors = df_variance.nlargest(5, 'abs_variance')
+        
+        category_data = {}
+        for category, row in top_contributors.iterrows():
+            category_data[category] = {
+                'actual': row[actual_col],
+                'budget': row[budget_col],
+                'variance': row['variance'],
+                'variance_pct': (row['variance'] / row[budget_col]) * 100 if row[budget_col] != 0 else None
+            }
+        
+        return {
+            'summary': {
+                'direct_expense': {
+                    'actual': df_raw_pivot[actual_col].sum(),
+                    'budget': df_raw_pivot[budget_col].sum(),
+                    'variance': metrics[period]['budget_variance_raw'],
+                    'variance_pct': float(metrics[period]['budget_variance_pct'].strip('%')) if 'budget_variance_pct' in metrics[period] else None
+                }
+            },
+            'categories': category_data,
+            'metrics': metrics[period],
+            'data_source': 'raw',
+            'top_contributors': top_contributors
+        }
 
-def prepare_drivers_for_llm(top_drivers_overall, top_drivers_by_category, category_metrics, period):
-    """Prepare detailed drivers for LLM processing, combining pivot data with category metrics"""
-    drivers_data = []
-    
-    # Process overall top drivers
-    for idx, row in top_drivers_overall.iterrows():
-        if isinstance(idx, tuple):
-            category, subcategory = idx
-        else:
-            subcategory = idx
-            category = "Unknown"
-        
-        variance = row['Variance']
-        
-        # Format for display
-        if abs(variance) >= 1000 and period == 'full_year':
-            variance_formatted = f"{variance/1000:.1f}mm"
-        else:
-            variance_formatted = f"{variance:.0f}k"
+def get_detailed_drivers_from_phi3(llm_input, period, model, tokenizer):
+    """Get detailed drivers from Phi-3-Mini using raw data"""
+    # Format the detailed category data for the prompt
+    categories_text = []
+    for category, values in llm_input['categories'].items():
+        if values.get('variance') is not None:
+            direction = "under budget" if values['variance'] < 0 else "over budget"
+            variance_text = ""
             
-        direction = "under budget" if variance < 0 else "over budget"
-        
-        # Add to drivers data
-        drivers_data.append({
-            'category': category,
-            'subcategory': subcategory,
-            'variance': variance,
-            'variance_formatted': variance_formatted,
-            'direction': direction
-        })
+            if abs(values['variance']) < 1000:
+                variance_text = f"{values['variance']:.0f}k"
+            elif abs(values['variance']) < 1000000:
+                variance_text = f"{values['variance']/1000:.1f}k"
+            else:
+                variance_text = f"{values['variance']/1000000:.2f}mm"
+                
+            categories_text.append(f"- {category}: {variance_text} {direction}")
     
-    # Complement with category metrics where missing
-    for category, metrics in category_metrics.items():
-        if period in metrics and abs(metrics[period]['variance']) > 0:
-            # Check if this category is already represented in drivers
-            if not any(d['category'] == category for d in drivers_data):
-                drivers_data.append({
-                    'category': category,
-                    'subcategory': f"{category} overall",
-                    'variance': metrics[period]['variance'],
-                    'variance_formatted': metrics[period]['variance_formatted'],
-                    'direction': metrics[period]['direction']
-                })
+    category_data_str = "\n".join(categories_text)
     
-    return drivers_data
-
-@st.cache_resource
-def load_phi3_model():
-    """Load the Phi-3-Mini model using HuggingFace Transformers."""
-    try:
-        with st.spinner("Loading Phi-3-Mini model... This may take a moment."):
-            model_name = "microsoft/phi-3-mini-128k-instruct"
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.float16,
-                device_map="auto",
-                trust_remote_code=True
-            )
-        return model, tokenizer
-    except Exception as e:
-        st.error(f"Error loading Phi-3-Mini model: {str(e)}")
-        return None, None
-
-def get_specific_drivers_from_phi3(metrics, drivers_data, period, model, tokenizer):
-    """Generate specific drivers from Phi-3-Mini using detailed subcategory data"""
     # Format period names for the prompt
     period_names = {
         'month': "the current month",
@@ -355,31 +254,29 @@ def get_specific_drivers_from_phi3(metrics, drivers_data, period, model, tokeniz
         'full_year': "full year forecast"
     }
     
-    # Format drivers data for the prompt
-    drivers_text = ""
-    for driver in drivers_data:
-        drivers_text += f"- {driver['subcategory']} ({driver['category']}): {driver['variance_formatted']} {driver['direction']}\n"
-    
-    # Create a more focused prompt with detailed data
+    # Create a more detailed prompt for raw data
     prompt = f"""<|system|>
-You are a financial analyst assistant. You identify key drivers in financial data with specificity and precision.
+You are a financial analyst assistant that identifies key drivers in financial data with specific details.
+</|System|>
 <|user|>
-Based on the following financial data for {period_names[period]}, identify the 3-5 most significant and specific drivers that
-explain why Direct Expense is {metrics[period]['variance_direction']} budget by {metrics[period]['budget_variance']}.
+Based on the following detailed financial data for {period_names[period]}, identify the 2-3 most significant drivers that
+explain why Direct Expense is {llm_input['metrics']['variance_direction']} budget by {llm_input['metrics']['budget_variance']}.
 
-Direct Expense: {metrics[period]['direct_expense']}
-Variance: {metrics[period]['budget_variance']} ({metrics[period]['variance_direction']} budget)
+Direct Expense: {llm_input['metrics']['direct_expense']}
+Variance: {llm_input['metrics']['budget_variance']} ({llm_input['metrics']['variance_direction']} budget)
 
-Detailed subcategory drivers:
-{drivers_text}
+Detailed expense categories and their variances:
+{category_data_str}
 
-IMPORTANT: Be very specific with your drivers. For example, instead of just saying "higher Compensation", specify exact subcategories 
-like "lower average FTE headcount (24)" or "higher Professional Services spending on cloud migration project".
+IMPORTANT: Return ONLY a comma-separated list of specific, detailed drivers in this format:
+"lower average FTE headcount (26), higher Professional Services due to IC payout, increased Vendor spend in IT services"
 
-Return ONLY a comma-separated list of specific drivers in this format:
-"lower average FTE headcount (24), higher Professional Services spending on cloud migration, increased Vendor costs for new platform"
-
-DO NOT include any explanation, additional numbers, or text beyond the specific drivers. Focus on the most significant subcategories that explain the overall variance.
+Key requirements:
+1. Be specific with numbers where available
+2. Mention sub-categories when relevant
+3. Keep each driver concise but detailed
+4. Return ONLY the comma-separated list, no additional text
+</|user|>
 <|assistant|>"""
     
     try:
@@ -389,63 +286,47 @@ DO NOT include any explanation, additional numbers, or text beyond the specific 
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=150,
-                temperature=0.2,  # Low temperature for consistency
+                temperature=0.2,
                 do_sample=True,
-                top_p=0.95
+                top_p=0.9
             )
         
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        response = response.split("</|user|>")[-1].strip()
         
-        # Extract only the assistant's response (remove the prompt)
-        response = response.split("<|assistant|>")[-1].strip()
-        
-        # Clean the response to ensure we only get the drivers
+        # Extract drivers and clean up
         if "," in response:
             drivers = [driver.strip() for driver in response.split(',')]
-            return drivers[:5]  # Limit to top 5 drivers
+            return drivers[:3]
         else:
-            # If no commas found, try to parse as best as possible
             return [response.strip()]
     except Exception as e:
-        st.error(f"Error generating drivers with Phi-3: {str(e)}")
-        
-        # Fallback with most significant drivers from the data
-        fallback_drivers = []
-        for i, driver in enumerate(drivers_data[:3]):
-            direction = "lower" if driver['variance'] < 0 else "higher"
-            fallback_drivers.append(f"{direction} {driver['subcategory']}")
-        
-        return fallback_drivers
+        st.error(f"Error generating detailed drivers: {str(e)}")
+        return ["lower headcount", "higher Professional Services"]  # Fallback
 
-def generate_commentary(metrics, drivers):
-    """Generate commentary using templates with specific drivers"""
-    
-    # Define templates for each time period
+def generate_detailed_commentary(metrics, drivers):
+    """Generate more detailed commentary using templates"""
     templates = {
-        'month': Template("Month:\nDirect Expense of $${direct_expense} is $$(${budget_variance}) ${variance_direction} budget mostly driven by ${drivers}."),
+        'month': Template("Month:\nDirect Expense of $$${direct_expense} is $$(${budget_variance}) ${variance_direction} budget driven by:\n- ${driver1}\n- ${driver2}${driver3}"),
         
-        'ytd': Template("YTD:\nDirect Expense of $${direct_expense} is $$(${budget_variance})/(${budget_variance_pct}) ${variance_direction} to budget driven mostly by ${drivers}."),
+        'ytd': Template("YTD:\nDirect Expense of $$${direct_expense} is $$(${budget_variance})/(${budget_variance_pct}) ${variance_direction} to budget driven by:\n- ${driver1}\n- ${driver2}${driver3}"),
         
-        'full_year': Template("Full Year:\nDirect Expense of $${direct_expense} is $$${budget_variance}mm ${variance_direction} driven by ${drivers}.")
+        'full_year': Template("Full Year:\nDirect Expense of $$${direct_expense} is $$${budget_variance}mm ${variance_direction} driven by:\n- ${driver1}\n- ${driver2}${driver3}")
     }
     
     commentary = {}
     
-    # Generate commentary for each time period
     for period in ['month', 'ytd', 'full_year']:
         if period not in metrics or period not in drivers:
-            commentary[period] = f"{period.upper()}: Data not available for commentary generation."
+            commentary[period] = f"{period.upper()}: Data not available."
             continue
             
-        # Format drivers as text
-        if len(drivers[period]) > 1:
-            # Use Oxford comma for clarity with multiple drivers
-            if len(drivers[period]) > 2:
-                drivers_text = ", ".join(drivers[period][:-1]) + ", and " + drivers[period][-1]
-            else:
-                drivers_text = " and ".join(drivers[period])
-        else:
-            drivers_text = drivers[period][0]
+        # Fill driver placeholders
+        driver_vars = {
+            'driver1': drivers[period][0] if len(drivers[period]) > 0 else "",
+            'driver2': drivers[period][1] + "\n- " if len(drivers[period]) > 1 else "",
+            'driver3': drivers[period][2] if len(drivers[period]) > 2 else ""
+        }
         
         # Generate commentary using template
         try:
@@ -453,99 +334,105 @@ def generate_commentary(metrics, drivers):
                 'direct_expense': metrics[period]['direct_expense'],
                 'budget_variance': metrics[period]['budget_variance'],
                 'variance_direction': metrics[period]['variance_direction'],
-                'drivers': drivers_text
+                **driver_vars
             }
             
-            # Add percentage for YTD if available
             if period == 'ytd' and 'budget_variance_pct' in metrics[period]:
                 template_data['budget_variance_pct'] = metrics[period]['budget_variance_pct']
             
             commentary[period] = templates[period].substitute(template_data)
         except KeyError as e:
             st.warning(f"Missing data for {period} commentary: {str(e)}")
-            commentary[period] = f"{period.upper()}: Insufficient data for commentary generation."
+            commentary[period] = f"{period.upper()}: Insufficient data."
     
-    # Combine all sections
-    full_commentary = f"{commentary.get('month', '')}\n\n{commentary.get('ytd', '')}\n\n{commentary.get('full_year', '')}"
+    # Combine all sections with appropriate spacing
+    full_commentary = ""
+    for period in ['month', 'ytd', 'full_year']:
+        if period in commentary:
+            full_commentary += commentary[period] + "\n\n"
     
-    return full_commentary
+    return full_commentary.strip()
 
 @st.cache_data(show_spinner=False)
-def process_data_with_llm(summary_file_bytes, detailed_file_bytes, model, tokenizer):
+def process_data_with_llm(file_bytes, model, tokenizer):
     """Process data with LLM and cache the results"""
-    
-    # Load and process the summary data from bytes
     try:
-        summary_df, current_month = load_and_process_summary_data(BytesIO(summary_file_bytes))
-        
-        if summary_df is None or current_month is None:
-            return None, None, None, None, None, None, None
-            
-        # Extract metrics from summary data
-        metrics = extract_metrics(summary_df, current_month)
-        
-        # Extract category metrics
-        category_metrics = extract_category_metrics(summary_df, current_month)
-        
-        # Process detailed data if available
-        detailed_pivot = None
-        top_drivers_overall = None
-        top_drivers_by_category = None
-        
-        if detailed_file_bytes:
-            detailed_df = load_and_process_detailed_data(BytesIO(detailed_file_bytes))
-            if detailed_df is not None:
-                # Create pivot table with inferred categories
-                detailed_pivot = create_expense_pivot(detailed_df)
+        # Load data from bytes
+        with BytesIO(file_bytes) as bio:
+            # First try to read as summary file
+            try:
+                df_summary = pd.read_excel(bio, index_col=0)
+                bio.seek(0)
                 
-                # Extract top drivers by category
-                top_drivers_overall, top_drivers_by_category = get_top_drivers_by_category(detailed_pivot)
+                # Find current month from column names
+                month_pattern = r"Current Month \((.*?)\)"
+                current_month = None
+                for col in df_summary.columns:
+                    match = re.search(month_pattern, col)
+                    if match:
+                        current_month = match.group(1)
+                        break
+                
+                df_raw_pivot = None
+                
+            except:
+                # If summary read fails, try as raw file
+                bio.seek(0)
+                df_raw = pd.read_excel(bio)
+                df_summary = None
+                
+                # Check for required columns
+                required_columns = ['Expense Details', 'Current Month', 'CY CM Actuals', 
+                                  'CY CM Budget', 'Full Year PY Actuals', 'Full Year CY Outlook',
+                                  'YTD PY Actuals', 'YTD CY Outlook']
+                
+                if all(col in df_raw.columns for col in required_columns):
+                    # Create pivot table
+                    pivot = pd.pivot_table(df_raw, 
+                                         index='Expense Details',
+                                         values=['CY CM Actuals', 'CY CM Budget',
+                                                'Full Year PY Actuals', 'Full Year CY Outlook',
+                                                'YTD PY Actuals', 'YTD CY Outlook'],
+                                         aggfunc='sum')
+                    
+                    current_month = "February '2025"  # Placeholder - adjust as needed
+                    df_raw_pivot = pivot
+                else:
+                    st.error("Uploaded file doesn't match expected format")
+                    return None, None, None, None, None
+        
+        # Extract metrics
+        metrics = extract_metrics(df_summary, df_raw_pivot, current_month)
         
         # Process with LLM to get drivers
         drivers = {}
         
-        # Process for each time period
         for period in ['month', 'ytd', 'full_year']:
             if period in metrics:
-                # Prepare drivers data
-                if detailed_pivot is not None and top_drivers_overall is not None:
-                    drivers_data = prepare_drivers_for_llm(top_drivers_overall, top_drivers_by_category, category_metrics, period)
-                    
-                    # Get specific drivers from Phi-3
-                    drivers[period] = get_specific_drivers_from_phi3(metrics, drivers_data, period, model, tokenizer)
+                llm_input = prepare_llm_input(df_summary, df_raw_pivot, metrics, current_month, period)
+                
+                if llm_input['data_source'] == 'raw':
+                    # Use detailed driver analysis for raw data
+                    drivers[period] = get_detailed_drivers_from_phi3(llm_input, period, model, tokenizer)
                 else:
-                    # Fallback to high-level category analysis if no detailed data
-                    drivers_data = []
-                    for category, cat_metrics in category_metrics.items():
-                        if period in cat_metrics:
-                            drivers_data.append({
-                                'category': category,
-                                'subcategory': category,
-                                'variance': cat_metrics[period]['variance'],
-                                'variance_formatted': cat_metrics[period]['variance_formatted'],
-                                'direction': cat_metrics[period]['direction']
-                            })
-                    
-                    # Sort by absolute variance
-                    drivers_data.sort(key=lambda x: abs(x['variance']), reverse=True)
-                    
-                    # Get specific drivers from Phi-3
-                    drivers[period] = get_specific_drivers_from_phi3(metrics, drivers_data, period, model, tokenizer)
+                    # Use standard driver analysis for summary data
+                    drivers[period] = get_drivers_from_phi3(llm_input, period, model, tokenizer)
         
-        # Generate commentary
-        commentary = generate_commentary(metrics, drivers)
+        # Generate appropriate commentary based on data source
+        if df_raw_pivot is not None:
+            commentary = generate_detailed_commentary(metrics, drivers)
+        else:
+            commentary = generate_commentary(metrics, drivers)
         
-        return summary_df, current_month, metrics, category_metrics, drivers, commentary, detailed_pivot
+        return df_summary, current_month, metrics, drivers, commentary, df_raw_pivot
+    
     except Exception as e:
         st.error(f"Error processing data: {str(e)}")
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None
 
 def main():
-    st.title("Executive Management Report Commentary Generator")
-    st.subheader("Enhanced Subcategory Analysis with Phi-3-Mini")
-    
-    # Add model information
-    st.info("This application uses Microsoft's Phi-3-Mini-128k model running locally via HuggingFace Transformers")
+    st.title("Enhanced EMR Commentary Generator")
+    st.subheader("Now with Detailed Driver Analysis")
     
     # Load Phi-3 model
     with st.spinner("Initializing Phi-3-Mini model..."):
@@ -555,161 +442,68 @@ def main():
         st.error("Failed to load Phi-3-Mini model. Please check your installation.")
         st.stop()
     
-    # Add model status indicator
     st.success("✅ Phi-3-Mini model loaded successfully")
     
-    # File upload section with tabs for required and optional files
-    st.subheader("Upload Files")
+    # File upload section
+    uploaded_file = st.file_uploader("Upload Excel file (summary or raw format)", type=["xlsx", "xls"])
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Required: Summary Excel File**")
-        summary_file = st.file_uploader("Upload summary Excel file", type=["xlsx", "xls"], key="summary")
+    if uploaded_file is not None:
+        file_bytes = uploaded_file.getvalue()
         
-    with col2:
-        st.markdown("**Optional: Detailed Excel File**")
-        st.markdown("*For more specific subcategory analysis*")
-        detailed_file = st.file_uploader("Upload detailed Excel file", type=["xlsx", "xls"], key="detailed")
-    
-    if summary_file is not None:
-        # Read files into memory
-        summary_file_bytes = summary_file.getvalue()
-        detailed_file_bytes = detailed_file.getvalue() if detailed_file is not None else None
-        
-        # Process data and cache results
         with st.spinner("Processing data and generating commentary..."):
-            summary_df, current_month, metrics, category_metrics, drivers, commentary, detailed_pivot = process_data_with_llm(
-                summary_file_bytes, detailed_file_bytes, model, tokenizer
-            )
+            df_summary, current_month, metrics, drivers, commentary, df_raw_pivot = process_data_with_llm(
+                file_bytes, model, tokenizer)
         
-        if summary_df is not None and current_month is not None:
-            # Success message based on which files were processed
-            if detailed_file_bytes:
-                st.success(f"✅ Analysis complete for {current_month} using both summary and detailed subcategory data")
+        if current_month is not None:
+            st.success(f"✅ Analysis complete for {current_month}")
+            
+            # Show data source info
+            if df_raw_pivot is not None:
+                st.info("Using detailed raw data for granular driver analysis")
+                if st.checkbox("Show raw data pivot"):
+                    st.dataframe(df_raw_pivot)
             else:
-                st.success(f"✅ Analysis complete for {current_month} using summary data only")
+                st.info("Using summary data for analysis")
+                if st.checkbox("Show summary data"):
+                    st.dataframe(df_summary)
             
-            # Display subcategory breakdown based on pivot table if available
-            if detailed_pivot is not None:
-                with st.expander("View Subcategory Analysis"):
-                    st.subheader("Subcategory Breakdown")
-                    
-                    # Show the counts by category
-                    categories = detailed_pivot.index.get_level_values(0).unique()
-                    
-                    # Create tabs for each category
-                    category_tabs = st.tabs(categories)
-                    
-                    for i, category in enumerate(categories):
-                        with category_tabs[i]:
-                            # Display subcategories for this category
-                            subcategories = detailed_pivot.loc[category].index.tolist()
-                            st.write(f"**{len(subcategories)} subcategories found for {category}:**")
-                            
-                            # Display subcategory table
-                            subcategory_df = detailed_pivot.loc[category].reset_index()
-                            st.dataframe(
-                                subcategory_df[['Expense Details', 'CY CM Actuals', 'CY CM Budget', 'Variance', 'Variance_Pct']],
-                                use_container_width=True
-                            )
+            # Display commentary
+            st.subheader("Generated Commentary")
+            st.text_area("Commentary", commentary, height=400)
             
-            # Add toggle for data inspection
-            with st.expander("View Extracted Data and Analysis"):
-                st.subheader("Extracted Metrics")
-                st.json(metrics)
-                
-                st.subheader("Category Metrics")
-                st.json(category_metrics)
-                
-                st.subheader("Phi-3-Generated Drivers")
-                st.json(drivers)
-                
-                # Show detailed pivot if available
-                if detailed_pivot is not None:
-                    st.subheader("Top Expense Detail Variances")
-                    if isinstance(detailed_pivot.index, pd.MultiIndex):
-                        # Display with categories
-                        st.dataframe(
-                            detailed_pivot.head(15)[['CY CM Actuals', 'CY CM Budget', 'Variance', 'Variance_Pct']],
-                            use_container_width=True
-                        )
-                    else:
-                        # Display without categories
-                        st.dataframe(
-                            detailed_pivot.head(15)[['CY CM Actuals', 'CY CM Budget', 'Variance', 'Variance_Pct']],
-                            use_container_width=True
-                        )
-            
-            # Commentary section
-            st.subheader("Generated Commentary with Subcategory Details")
-            
-            # Create a container with background for better readability
-            commentary_container = st.container(border=True)
-            with commentary_container:
-                st.markdown(f"```\n{commentary}\n```")
-            
-            # Add download button
+            # Download button
             st.download_button(
                 label="Download Commentary",
                 data=commentary,
-                file_name="commentary.txt",
+                file_name="detailed_commentary.txt",
                 mime="text/plain"
             )
             
-            # Compare with original example
-            with st.expander("Compare with example commentary"):
-                example_commentary = """Month:
-Direct Expense of $12.6mm is $(56k) under budget mostly
-driven by Compensation based on lower headcount, partly
-offset by higher Vendor spend.
+            # Compare with example
+            if st.checkbox("Compare with example detailed commentary"):
+                example = """Month:
+Direct Expense of $12.6mm is $(56k) under budget driven by:
+- Compensation savings from 26 fewer FTEs than planned
+- Lower Facilities spend due to delayed office renovations
 
 YTD:
-Direct Expense of $24.8mm is ($675k)/(3%) favorable to
-budget driven mostly by lower average FTE headcount (26),
-partly offset by higher Professional Services & IC payout.
+Direct Expense of $24.8mm is ($675k)/(3%) favorable to budget driven by:
+- Lower average FTE headcount (26 under plan)
+- Reduced Marketing spend ($150k) from delayed campaigns
+- Savings in Technology licenses ($120k)
 
 Full Year:
-Direct Expense of $156.7mm is $2.5mm unfavorable driven by
-higher Professional Services due to approved additional
-resources & IC Payout."""
+Direct Expense of $156.7mm is $2.5mm unfavorable driven by:
+- Higher Professional Services ($1.8mm) due to IC payout
+- Increased Vendor spend in IT ($700k) for cloud migration"""
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.subheader("Generated Commentary")
+                    st.subheader("Generated")
                     st.text(commentary)
-                
                 with col2:
-                    st.subheader("Example Commentary")
-                    st.text(example_commentary)
-    else:
-        # Display instructions when no files are uploaded
-        st.info("Please upload the summary Excel file to generate commentary. For more detailed subcategory analysis, also upload the detailed Excel file.")
-        
-        with st.expander("View example file formats"):
-            st.markdown("### Summary File Format (Required)")
-            st.markdown("""
-            The summary file should have categories as rows, with columns for:
-            - Current Month (Month 'Year) Actuals
-            - Current Month (Month 'Year) Budget
-            - Current Month (Month 'Year) O/U
-            - YTD 'Year Actuals
-            - YTD 'Year Budget
-            - YTD 'Year O/U
-            - Full Year 'Year Actuals
-            - Full Year 'Year Budget
-            - Full Year 'Year O/U
-            """)
-            
-            st.markdown("### Detailed File Format (Optional)")
-            st.markdown("""
-            The detailed file should have individual expense items with columns including:
-            - Expense Details (subcategory)
-            - CY CM Actuals (Current Year Current Month Actuals)
-            - CY CM Budget (Current Year Current Month Budget)
-            
-            Adding this file will enable subcategory-level analysis for more specific commentary.
-            """)
+                    st.subheader("Example")
+                    st.text(example)
 
 if __name__ == "__main__":
     main()
