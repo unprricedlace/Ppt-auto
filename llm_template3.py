@@ -1,4 +1,62 @@
-: Tried to instantiate class '__path__._path', but it does not exist! Ensure that it is registered via torch::class_
+Generated Drivers
+MONTH Drivers
+
+lower headcount, higher Professional Services
+
+YTD Drivers
+
+lower headcount, higher Vendor spend
+
+FULL_YEAR Drivers
+
+higher Compensation costs, higher Contractor spend
+
+Subcategory Groupings
+{
+"Other":{
+"actual":-637.4597900000035
+"budget":-1053.3547600000174
+"variance":415.8949700000067
+}
+"Non-Compensation":{
+"actual":540.04069
+"budget":548.89224
+"variance":-8.851549999999975
+}
+}
+
+
+YTD:
+Direct Expense of $24.8mm is ($675)/(3%) favorable to budget
+driven mostly by lower headcount
+
+Full Year:
+Direct Expense of $156.7mm is $2.5mm unfavorable driven by 
+
+
+"Compensation", "Non-Compensation", "Direct Expense", "Direct Exp w/o Severance",
+        "Allocations", "Total Expense", "Employees", "Contractors", "Total Headcount"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import pandas as pd
 import streamlit as st
 from string import Template
