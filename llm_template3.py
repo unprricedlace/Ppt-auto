@@ -291,72 +291,84 @@ Return ONLY a comma-separated list like:
         return ["lower headcount", "higher Professional Services"]
 
 def generate_hybrid_commentary(metrics, drivers, grouped_details):
-    """Generate commentary combining summary and detailed drivers"""
+    """Generate complete commentary with all periods and proper driver inclusion"""
     commentary = []
+    
+    # Month Section
+    if 'month' in metrics and 'month' in drivers:
+        month_template = """Month:
+Direct Expense of ${direct_expense} is (${variance_abs}) ${direction} budget
+driven by:
+{drivers_list}"""
+        
+        drivers_list = []
+        for driver in drivers['month']:
+            if 'lower' in driver:
+                drivers_list.append(f"- {driver.capitalize()}")
+            else:
+                # Find matching subcategories
+                for subcat, data in grouped_details.get('month', {}).items():
+                    if data['variance'] > 0 and subcat.lower() in driver.lower():
+                        amount = f"${abs(data['variance']):.0f}k" if abs(data['variance']) < 1000 else f"${abs(data['variance'])/1000:.1f}K"
+                        drivers_list.append(f"- {subcat} ({amount})")
+        
+        month_section = month_template.format(
+            direct_expense=metrics['month']['direct_expense'],
+            variance_abs=metrics['month']['budget_variance'].replace('k', ''),
+            direction=metrics['month']['variance_direction'],
+            drivers_list='\n'.join(drivers_list) if drivers_list else "No significant drivers"
+        )
+        commentary.append(month_section)
     
     # YTD Section
     if 'ytd' in metrics and 'ytd' in drivers:
         ytd_template = """YTD:
 Direct Expense of ${direct_expense} is (${variance_abs})/({variance_pct}) {direction} to budget
-driven mostly by {main_drivers}{offset_details}"""
+driven by:
+{drivers_list}"""
         
-        main_drivers = []
-        offset_details = []
-        
-        # Process main drivers
+        drivers_list = []
         for driver in drivers['ytd']:
             if 'lower' in driver:
-                main_drivers.append(driver)
+                drivers_list.append(f"- {driver.capitalize()}")
             else:
                 # Find matching subcategories
-                for subcat, data in grouped_details['ytd'].items():
+                for subcat, data in grouped_details.get('ytd', {}).items():
                     if data['variance'] > 0 and subcat.lower() in driver.lower():
-                        amount = f"${abs(data['variance'])/1000:.1f}K" if abs(data['variance']) < 1000000 else f"${abs(data['variance'])/1000000:.2f}mm"
-                        offset_details.append(f"{subcat} ({amount})")
-        
-        # Format the offset text
-        offset_text = ""
-        if offset_details:
-            offset_text = f",\npartly offset by higher {', '.join(offset_details[:3])}"
+                        amount = f"${abs(data['variance']):.0f}k" if abs(data['variance']) < 1000 else f"${abs(data['variance'])/1000:.1f}K"
+                        drivers_list.append(f"- {subcat} ({amount})")
         
         ytd_section = ytd_template.format(
             direct_expense=metrics['ytd']['direct_expense'],
             variance_abs=metrics['ytd']['budget_variance'].replace('k', ''),
             variance_pct=metrics['ytd'].get('budget_variance_pct', 'N/A'),
             direction=metrics['ytd']['variance_direction'],
-            main_drivers=', '.join(main_drivers[:2]),
-            offset_details=offset_text
+            drivers_list='\n'.join(drivers_list) if drivers_list else "No significant drivers"
         )
         commentary.append(ytd_section)
     
     # Full Year Section
     if 'full_year' in metrics and 'full_year' in drivers:
         fy_template = """Full Year:
-Direct Expense of ${direct_expense} is ${variance_abs}mm {direction} driven by {main_drivers}{offset_details}"""
+Direct Expense of ${direct_expense} is ${variance_abs}mm {direction} driven by:
+{drivers_list}"""
         
-        main_drivers = []
-        offset_details = []
-        
+        drivers_list = []
         for driver in drivers['full_year']:
             if 'higher' in driver:
                 # Find matching subcategories
-                for subcat, data in grouped_details['full_year'].items():
+                for subcat, data in grouped_details.get('full_year', {}).items():
                     if data['variance'] > 0 and subcat.lower() in driver.lower():
                         amount = f"${abs(data['variance'])/1000000:.2f}mm"
-                        offset_details.append(f"{subcat} ({amount})")
+                        drivers_list.append(f"- {subcat} ({amount})")
             else:
-                main_drivers.append(driver)
-        
-        offset_text = ""
-        if offset_details:
-            offset_text = f", including {', '.join(offset_details[:3])}"
+                drivers_list.append(f"- {driver.capitalize()}")
         
         fy_section = fy_template.format(
             direct_expense=metrics['full_year']['direct_expense'],
             variance_abs=metrics['full_year']['budget_variance'].replace('mm', ''),
             direction=metrics['full_year']['variance_direction'],
-            main_drivers=', '.join(main_drivers[:2]),
-            offset_details=offset_text
+            drivers_list='\n'.join(drivers_list) if drivers_list else "No significant drivers"
         )
         commentary.append(fy_section)
     
