@@ -120,8 +120,12 @@ def generate_commentary(data, period, at_par_threshold):
     commentary = f"{period}:\n"
     commentary += f"Direct expense of {format_currency(direct_expense)} is "
     
-    # Format variance amount
-    variance_amount = format_currency(abs(direct_expense_variance))
+    # Format variance amount - only put parentheses if favorable
+    if is_favorable:
+        variance_amount = f"({format_currency(abs(direct_expense_variance))})"
+    else:
+        variance_amount = f"{format_currency(abs(direct_expense_variance))}"
+        
     variance_pct = format_percentage(direct_expense_variance_pct)
     
     if abs(direct_expense_variance_pct) <= at_par_threshold:
@@ -144,21 +148,19 @@ def generate_commentary(data, period, at_par_threshold):
     
     # Determine if headcount is driving compensation
     if abs(sal_ben_sum) > 0:
-        sal_ben_amount = format_currency(abs(sal_ben_sum))
-        
         # Checking if salaries+benefits and headcount are moving in same direction
         same_direction = (sal_ben_sum < 0 and employees_variance < 0) or (sal_ben_sum > 0 and employees_variance > 0)
         
         if sal_ben_sum < 0:  # Favorable
             if same_direction:
-                comp_favorable_drivers.append(f"lower compensation ({sal_ben_amount}) due to lower headcount")
+                comp_favorable_drivers.append("due to lower headcount")
             else:
-                comp_favorable_drivers.append(f"lower compensation ({sal_ben_amount}) due to decreased rates")
+                comp_favorable_drivers.append("due to decreased rates")
         else:  # Unfavorable
             if same_direction:
-                comp_unfavorable_drivers.append(f"higher compensation ({sal_ben_amount}) due to higher headcount")
+                comp_unfavorable_drivers.append("due to higher headcount")
             else:
-                comp_unfavorable_drivers.append(f"higher compensation ({sal_ben_amount}) due to increased rates")
+                comp_unfavorable_drivers.append("due to increased rates")
     
     # Check severance impact
     severance_variance = data.loc[data['Expense Details'] == 'Severance', variance_col].values[0]
@@ -167,7 +169,7 @@ def generate_commentary(data, period, at_par_threshold):
         if severance_variance < 0:
             comp_favorable_drivers.append(f"lower severance ({severance_amount})")
         else:
-            comp_unfavorable_drivers.append(f"higher severance ({severance_amount})")
+            comp_unfavorable_drivers.append(f"higher severance {severance_amount}")
     
     # Check for IC payout
     incentives_variance = data.loc[data['Expense Details'] == 'Incentives Compensation', variance_col].values[0]
@@ -176,7 +178,7 @@ def generate_commentary(data, period, at_par_threshold):
         if incentives_variance < 0:
             comp_favorable_drivers.append(f"lower IC payout ({ic_amount})")
         else:
-            comp_unfavorable_drivers.append(f"higher IC payout ({ic_amount})")
+            comp_unfavorable_drivers.append(f"higher IC payout {ic_amount}")
     
     # Analyze drivers for non-compensation
     noncomp_favorable_drivers = []
@@ -188,7 +190,7 @@ def generate_commentary(data, period, at_par_threshold):
     if not pd.isna(pos_variance) and abs(pos_variance) > 0:
         pos_amount = format_currency(abs(pos_variance))
         if pos_variance > 0:
-            noncomp_unfavorable_drivers.append(f"higher Professional and Outside Services ({pos_amount})")
+            noncomp_unfavorable_drivers.append(f"higher Professional and Outside Services {pos_amount}")
             noncomp_drivers_direction.append(-1)
         else:
             noncomp_favorable_drivers.append(f"lower Professional and Outside Services ({pos_amount})")
@@ -215,7 +217,7 @@ def generate_commentary(data, period, at_par_threshold):
     if not pd.isna(tech_variance) and abs(tech_variance) > 0:
         tech_amount = format_currency(abs(tech_variance))
         if tech_variance > 0:
-            noncomp_unfavorable_drivers.append(f"higher Tech&Comms spend ({tech_amount})")
+            noncomp_unfavorable_drivers.append(f"higher Tech&Comms spend {tech_amount}")
             noncomp_drivers_direction.append(-1)
         else:
             noncomp_favorable_drivers.append(f"lower Tech&Comms spend ({tech_amount})")
@@ -226,7 +228,7 @@ def generate_commentary(data, period, at_par_threshold):
     if not pd.isna(te_variance) and abs(te_variance) > 0:
         te_amount = format_currency(abs(te_variance))
         if te_variance > 0:
-            noncomp_unfavorable_drivers.append(f"higher T&E ({te_amount})")
+            noncomp_unfavorable_drivers.append(f"higher T&E {te_amount}")
             noncomp_drivers_direction.append(-1)
         else:
             noncomp_favorable_drivers.append(f"lower T&E ({te_amount})")
@@ -237,7 +239,7 @@ def generate_commentary(data, period, at_par_threshold):
     if not pd.isna(other_variance) and abs(other_variance) > 0:
         other_amount = format_currency(abs(other_variance))
         if other_variance > 0:
-            noncomp_unfavorable_drivers.append(f"higher Other Expenses ({other_amount})")
+            noncomp_unfavorable_drivers.append(f"higher Other Expenses {other_amount}")
             noncomp_drivers_direction.append(-1)
         else:
             noncomp_favorable_drivers.append(f"lower Other Expenses ({other_amount})")
@@ -248,12 +250,18 @@ def generate_commentary(data, period, at_par_threshold):
         comp_bullet = f"• Compensation: at par with budget"
     else:
         comp_variance_term = "favorable" if compensation_variance < 0 else "unfavorable"
-        comp_amount = format_currency(abs(compensation_variance))
+        
+        # Format with parentheses only for favorable amounts
+        if compensation_variance < 0:
+            comp_amount = f"({format_currency(abs(compensation_variance))})"
+        else:
+            comp_amount = f"{format_currency(abs(compensation_variance))}"
+            
         comp_pct = format_percentage(compensation_variance_pct)
         
-        comp_bullet = f"• Compensation: ({comp_amount})/({comp_pct}) {comp_variance_term} to budget"
+        comp_bullet = f"• Compensation: {comp_amount}/({comp_pct}) {comp_variance_term} to budget"
         
-        # MODIFIED: First list drivers aligned with overall comp direction, then list offsetting factors
+        # First list drivers aligned with overall comp direction, then list offsetting factors
         aligned_drivers = comp_favorable_drivers if compensation_variance < 0 else comp_unfavorable_drivers
         offsetting_drivers = comp_unfavorable_drivers if compensation_variance < 0 else comp_favorable_drivers
         
@@ -273,7 +281,13 @@ def generate_commentary(data, period, at_par_threshold):
         noncomp_bullet = f"• Non-comp: at par with budget"
     else:
         noncomp_variance_term = "favorable" if non_compensation_variance < 0 else "unfavorable"
-        noncomp_amount = format_currency(abs(non_compensation_variance))
+        
+        # Format with parentheses only for favorable amounts
+        if non_compensation_variance < 0:
+            noncomp_amount = f"({format_currency(abs(non_compensation_variance))})"
+        else:
+            noncomp_amount = f"{format_currency(abs(non_compensation_variance))}"
+            
         noncomp_pct = format_percentage(non_compensation_variance_pct)
         
         noncomp_bullet = f"• Non-comp: {noncomp_amount}/({noncomp_pct}) {noncomp_variance_term} to budget"
@@ -287,7 +301,7 @@ def generate_commentary(data, period, at_par_threshold):
             if all_same_direction and (len(noncomp_favorable_drivers) + len(noncomp_unfavorable_drivers)) > 2:
                 noncomp_bullet += " driven mostly by vendor spend"
             else:
-                # MODIFIED: First list drivers aligned with overall non-comp direction, then list offsetting factors
+                # First list drivers aligned with overall non-comp direction, then list offsetting factors
                 aligned_drivers = noncomp_favorable_drivers if non_compensation_variance < 0 else noncomp_unfavorable_drivers
                 offsetting_drivers = noncomp_unfavorable_drivers if non_compensation_variance < 0 else noncomp_favorable_drivers
                 
