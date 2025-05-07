@@ -200,6 +200,7 @@ hr {
 
 
 import sqlite3
+import re
 
 def quote_for_sqlite(query_with_placeholders, *values):
     conn = sqlite3.connect(":memory:")
@@ -207,19 +208,29 @@ def quote_for_sqlite(query_with_placeholders, *values):
     
     # Helper function to quote identifiers
     def quote_identifier(identifier):
+        # Check if already quoted
+        if identifier.startswith('"') and identifier.endswith('"'):
+            return identifier  # Already quoted
         return f'"{identifier}"'
     
-    # Example preprocessing - quote all identifiers in the query
-    # You would need more robust SQL parsing here
-    identifiers = ["column1", "column2", "table_name"]  # Your column/table names
+    # Your column/table names - in a real implementation, you would
+    # either extract these from your schema or parse the SQL
+    identifiers = ["column1", "column2", "table_name"]
+    
+    # Use regex to find and replace identifiers while preserving quotes
     processed_query = query_with_placeholders
     
     for identifier in identifiers:
-        processed_query = processed_query.replace(identifier, quote_identifier(identifier))
+        # Pattern to match the identifier when it's not already quoted
+        # This looks for the identifier with word boundaries that isn't already
+        # enclosed in double quotes
+        pattern = r'(?<!")(\b' + re.escape(identifier) + r'\b)(?!")'
+        processed_query = re.sub(pattern, quote_identifier(identifier), processed_query)
     
     return processed_query
 
 # Example
-original = "SELECT column1, column2 FROM table_name WHERE column1 = ?"
+original = "SELECT column1, column2, \"already_quoted\" FROM table_name WHERE column1 = ?"
 processed = quote_for_sqlite(original)
-# Result: SELECT "column1", "column2" FROM "table_name" WHERE "column1" = ?
+print(processed)
+# Result: SELECT "column1", "column2", "already_quoted" FROM "table_name" WHERE "column1" = ?
