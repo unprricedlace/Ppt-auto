@@ -199,16 +199,27 @@ hr {
 }
 
 
-from sqlalchemy import create_engine, text
+import sqlite3
 
-engine = create_engine('sqlite:///your_database.db')
-
-def execute_natural_language_query(nl_query):
-    # 1. Get SQL from natural-sql6
-    sql_from_model = natural_sql6_model.generate(nl_query)
+def quote_for_sqlite(query_with_placeholders, *values):
+    conn = sqlite3.connect(":memory:")
+    cursor = conn.cursor()
     
-    # 2. Let SQLAlchemy handle it with proper quoting
-    with engine.connect() as conn:
-        # The text() function processes the raw SQL and handles quoting
-        result = conn.execute(text(sql_from_model))
-        return result.fetchall()
+    # Helper function to quote identifiers
+    def quote_identifier(identifier):
+        return f'"{identifier}"'
+    
+    # Example preprocessing - quote all identifiers in the query
+    # You would need more robust SQL parsing here
+    identifiers = ["column1", "column2", "table_name"]  # Your column/table names
+    processed_query = query_with_placeholders
+    
+    for identifier in identifiers:
+        processed_query = processed_query.replace(identifier, quote_identifier(identifier))
+    
+    return processed_query
+
+# Example
+original = "SELECT column1, column2 FROM table_name WHERE column1 = ?"
+processed = quote_for_sqlite(original)
+# Result: SELECT "column1", "column2" FROM "table_name" WHERE "column1" = ?
