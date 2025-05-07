@@ -197,3 +197,18 @@ hr {
         font-size: 14px;
     }
 }
+
+
+from sqlalchemy import create_engine, text
+
+engine = create_engine('sqlite:///your_database.db')
+
+def execute_natural_language_query(nl_query):
+    # 1. Get SQL from natural-sql6
+    sql_from_model = natural_sql6_model.generate(nl_query)
+    
+    # 2. Let SQLAlchemy handle it with proper quoting
+    with engine.connect() as conn:
+        # The text() function processes the raw SQL and handles quoting
+        result = conn.execute(text(sql_from_model))
+        return result.fetchall()
