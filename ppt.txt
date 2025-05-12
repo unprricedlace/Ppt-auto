@@ -766,3 +766,109 @@ The image contains a table with two columns. The left column lists various compe
 - Demonstrates sound moral and ethical principles.
 - Refuses to benefit from unfair or immoral decisions and actions.
 
+
+
+# Strategic Competency Self-Reflection
+
+## Analytical Thinking
+
+### What Went Well
+- Successfully broke down complex problems in projects like the data analytics chatbot and financial commentary generator.
+- Demonstrated ability to logically analyze and transform intricate business challenges into practical, innovative solutions.
+
+### Areas for Growth
+- Continuously challenge myself to explore more innovative analytical approaches, demonstrating a growth mindset.
+- Actively seek opportunities to expand analytical capabilities by taking on increasingly complex problem-solving scenarios.
+- Maintain a curious and learning-oriented perspective to turn potential limitations into opportunities for creative solutions.
+
+## Drive for Excellence
+
+### What Went Well
+- Consistently went beyond basic internship requirements by initiating multiple innovative projects.
+- Demonstrated perseverance in developing POCs like chatbot and financial commentary generator despite technical challenges.
+- Successfully automated 18 reports, significantly reducing manual work time from hours to minutes.
+
+### Areas for Growth
+- Embrace challenges as opportunities for continuous improvement and learning.
+- Develop a more strategic approach to balancing perfection with timely delivery.
+- Continue to push boundaries while maintaining a realistic and pragmatic perspective on project scope and limitations.
+
+## Commercial Acumen
+
+### What Went Well
+- Developed solutions directly addressing organizational needs and workflow inefficiencies.
+- Demonstrated understanding of business processes through targeted automation projects.
+- Created tools that provide tangible value to multiple teams within the organization.
+
+### Areas for Growth
+- Deepen strategic thinking by continuously aligning technical solutions with broader business objectives.
+- Develop a more holistic view of organizational challenges and opportunities.
+- Enhance ability to translate technical potential into strategic business value, demonstrating forward-thinking approach.
+
+## Technical Skills
+
+### What Went Well
+- Showcased proficiency in Python, Streamlit, data analysis, and workflow automation.
+- Successfully developed multiple proof-of-concept solutions using advanced technologies.
+- Demonstrated versatility in handling different technical challenges across projects.
+
+### Areas for Growth
+- Maintain an agile learning approach to emerging technologies.
+- Proactively identify and address skill gaps through strategic learning initiatives.
+- Transform technical limitations into opportunities for innovative problem-solving and creative workarounds.
+
+## Communications
+
+### What Went Well
+- Effectively communicated complex technical concepts to both technical and non-technical stakeholders.
+- Created clear documentation and presentations for projects.
+- Successfully bridged communication gaps between technical and business teams.
+
+### Areas for Growth
+- Continue refining communication skills to make technical concepts more accessible and engaging.
+- Develop adaptive communication strategies that resonate with diverse audiences.
+- Transform potential communication challenges into opportunities for clearer, more impactful dialogue.
+
+## Motivation to Develop
+
+### What Went Well
+- Proactively sought opportunities beyond assigned tasks.
+- Participated in cross-team collaborations and voluntary activities.
+- Showed enthusiasm for learning and continuous improvement.
+
+### Areas for Growth
+- Cultivate a more structured approach to personal and professional development.
+- Demonstrate commitment to continuous learning by creating a strategic personal development roadmap.
+- Transform potential developmental gaps into opportunities for targeted skill enhancement.
+
+## Partnership
+
+### What Went Well
+- Collaborated effectively with multiple teams across the organization.
+- Provided technical support and developed solutions for different departments.
+- Demonstrated team-oriented approach through various initiatives.
+
+### Areas for Growth
+- Develop more nuanced collaboration strategies that leverage individual and team strengths.
+- Continue building cross-functional relationships with a strategic, value-driven approach.
+- Transform potential collaboration challenges into opportunities for innovative team synergies.
+
+## Integrity
+
+### What Went Well
+- Maintained high professional standards throughout the internship.
+- Demonstrated commitment to ethical problem-solving and organizational values.
+- Actively participated in positive organizational initiatives like Women's Day celebration.
+
+### Areas for Growth
+- Continuously reinforce and expand understanding of professional ethics.
+- Proactively seek opportunities to contribute to and elevate organizational culture.
+- Demonstrate leadership in ethical decision-making by turning potential ethical challenges into opportunities for positive impact.
+
+## Key Strategic Insights
+
+### Overarching Growth Approach
+- View challenges as opportunities for innovation and personal development.
+- Maintain a growth mindset that transforms potential limitations into strategic advantages.
+- Continuously align personal development with organizational objectives and values.
+
