@@ -1,0 +1,27 @@
+Employee Cost Optimization Tool: Project Summary
+Overview
+The Employee Cost Optimization Tool is a data-driven application designed to help organizations strategically reduce employee costs through intelligent workforce relocation and role changes. The tool analyzes existing employee cost structures across multiple designations (Analyst, Associate, AVP, VP, ED, MD) and global locations (India, US, UK), then recommends specific employee relocations to meet cost-saving targets while minimizing disruption. Using interactive visualizations and a flexible interface, decision-makers can explore various cost optimization scenarios before implementing changes, balancing financial objectives with talent management considerations.
+Scope
+
+Data Management: Generation and visualization of employee cost data across different designations and locations
+Current State Analysis: Interactive selection of employee positions and calculation of total current costs
+Optimization Algorithm: Implementation of a greedy algorithm that identifies optimal employee relocations to achieve target cost savings
+Results Visualization: Comprehensive visualization of optimization results including:
+
+Detailed relocation plans with associated cost savings
+Sankey diagrams showing employee movement flows
+Before/after comparison charts by location and designation
+Cost breakdowns and savings metrics with percentage improvements
+
+
+User Interface: Streamlit-based web application with intuitive controls, expandable sections, and responsive visualizations
+
+Challenges
+
+Algorithm Optimization: The current greedy approach prioritizes maximum savings but may not always find the global optimum. More sophisticated algorithms (linear programming, genetic algorithms) could improve optimization results.
+Constraint Handling: The tool currently focuses on cost reduction but doesn't account for other important constraints like headcount limits per location, skills matching, or employee preferences.
+Data Realism: Using synthetic data with simple multipliers may not capture the complexity of real-world compensation variations across markets and roles.
+Multiple Objectives: Organizations typically have competing objectives beyond cost reduction, such as talent retention, diversity goals, and business continuity requirements.
+Implementation Planning: While the tool suggests relocations, it doesn't address implementation challenges like transition costs, timeline planning, or regulatory/visa considerations.
+
+This Employee Cost Optimization Tool serves as a valuable first step toward data-driven workforce planning but would benefit from additional refinements to address real-world complexity and multi-faceted organizational needs.
