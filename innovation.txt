@@ -25,3 +25,12 @@ Multiple Objectives: Organizations typically have competing objectives beyond co
 Implementation Planning: While the tool suggests relocations, it doesn't address implementation challenges like transition costs, timeline planning, or regulatory/visa considerations.
 
 This Employee Cost Optimization Tool serves as a valuable first step toward data-driven workforce planning but would benefit from additional refinements to address real-world complexity and multi-faceted organizational needs.
+
+
+This project creates a tool that automatically generates written summaries for executive reports. It takes data from a Tableau worksheet, processes it, and provides commentary for the current month, year-to-date, and full year, making report creation faster and easier.
+
+Data Acquiring: Reads the excel data provided to acquire the important metrics for the commentary 
+
+Commentary Generation: Takes and the important metrics and after analysis generates the required commentary
+
+Deep Analysis: Plans to analyze vendor reports to identify drivers of non-compensation expenses.
