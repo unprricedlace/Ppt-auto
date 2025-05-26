@@ -79,15 +79,15 @@ def calculate_cost_savings(current_selections, employee_data):
     
     return total_current_cost
 
-# Enhanced optimization function with user-specified target locations and positions per employee group
-def suggest_optimal_relocations_enhanced(current_selections, target_savings, employee_data, constraints):
+# Enhanced optimization function with preference constraints
+def suggest_optimal_relocations_enhanced(current_selections, target_savings, employee_data, constraints, scenario_type="max_savings"):
     current_cost = calculate_cost_savings(current_selections, employee_data)
     target_cost = current_cost - target_savings
     
     if target_cost <= 0:
         return None, "Target savings too high. Cannot reduce costs to zero or negative."
     
-    # Convert selections to a list of individual positions with their details including targets
+    # Convert selections to a list of individual positions with their details
     positions = []
     position_id = 0
     for selection in current_selections:
@@ -102,47 +102,51 @@ def suggest_optimal_relocations_enhanced(current_selections, target_savings, emp
                 "designation": selection["designation"],
                 "location": selection["location"],
                 "cost": cost,
-                "target_designation": selection["target_designation"],
-                "target_location": selection["target_location"]
+                "preferred_locations": selection.get("preferred_locations", []),
+                "preferred_designations": selection.get("preferred_designations", []),
+                "original_selection_idx": position_id
             })
             position_id += 1
     
-    # Get all possible moves for each position based on their specific targets
+    # Get all possible moves for each position
     all_moves = []
     for pos in positions:
-        new_designation = pos["target_designation"]
-        new_location = pos["target_location"]
-        
-        # Skip if no change
-        if new_designation == pos["designation"] and new_location == pos["location"]:
-            continue
-        
-        # Check constraints
-        if not is_move_allowed(pos, new_designation, new_location, constraints):
-            continue
-        
-        new_cost = employee_data[
-            (employee_data["Designation"] == new_designation) & 
-            (employee_data["Location"] == new_location)
-        ]["Annualized_Rate"].values[0]
-        
-        saving = pos["cost"] - new_cost
-        efficiency = saving / pos["cost"] if pos["cost"] > 0 else 0  # Savings as percentage
-        
-        all_moves.append({
-            "position_id": pos["id"],
-            "original_designation": pos["designation"],
-            "original_location": pos["location"],
-            "new_designation": new_designation,
-            "new_location": new_location,
-            "saving": saving,
-            "efficiency": efficiency,
-            "original_cost": pos["cost"],
-            "new_cost": new_cost
-        })
+        for new_designation in DESIGNATIONS:
+            for new_location in LOCATIONS:
+                # Skip if no change
+                if new_designation == pos["designation"] and new_location == pos["location"]:
+                    continue
+                
+                # Check if move matches preferences (only allow moves that match preferences)
+                if not is_move_preferred(pos, new_designation, new_location):
+                    continue
+                
+                # Check other constraints
+                if not is_move_allowed(pos, new_designation, new_location, constraints):
+                    continue
+                
+                new_cost = employee_data[
+                    (employee_data["Designation"] == new_designation) & 
+                    (employee_data["Location"] == new_location)
+                ]["Annualized_Rate"].values[0]
+                
+                saving = pos["cost"] - new_cost
+                efficiency = saving / pos["cost"] if pos["cost"] > 0 else 0  # Savings as percentage
+                
+                all_moves.append({
+                    "position_id": pos["id"],
+                    "original_designation": pos["designation"],
+                    "original_location": pos["location"],
+                    "new_designation": new_designation,
+                    "new_location": new_location,
+                    "saving": saving,
+                    "efficiency": efficiency,
+                    "original_cost": pos["cost"],
+                    "new_cost": new_cost
+                })
     
-    # Enhanced selection algorithm
-    selected_moves = smart_move_selection(all_moves, target_savings, constraints)
+    # Enhanced selection algorithm based on scenario
+    selected_moves = smart_move_selection(all_moves, target_savings, constraints, scenario_type)
     
     # Calculate actual savings
     total_savings = sum(move["saving"] for move in selected_moves)
@@ -169,6 +173,17 @@ def suggest_optimal_relocations_enhanced(current_selections, target_savings, emp
     
     return selected_moves, message
 
+def is_move_preferred(position, new_designation, new_location):
+    """Check if a move matches user preferences"""
+    preferred_locations = position.get("preferred_locations", [])
+    preferred_designations = position.get("preferred_designations", [])
+    
+    # If no preferences specified, allow all moves
+    location_match = len(preferred_locations) == 0 or new_location in preferred_locations
+    designation_match = len(preferred_designations) == 0 or new_designation in preferred_designations
+    
+    return location_match and designation_match
+
 def is_move_allowed(position, new_designation, new_location, constraints):
     """Check if a move is allowed based on constraints"""
     
@@ -190,25 +205,15 @@ def is_move_allowed(position, new_designation, new_location, constraints):
     
     return True
 
-def smart_move_selection(all_moves, target_savings, constraints):
+def smart_move_selection(all_moves, target_savings, constraints, scenario_type):
     """Enhanced move selection algorithm"""
     
-    # Sort moves by a composite score considering efficiency and absolute savings
-    def calculate_score(move):
-        efficiency_weight = constraints.get("efficiency_weight", 0.6)
-        savings_weight = constraints.get("savings_weight", 0.4)
-        
-        # Normalize efficiency and absolute savings
-        max_efficiency = max(m["efficiency"] for m in all_moves) if all_moves else 1
-        max_saving = max(m["saving"] for m in all_moves) if all_moves else 1
-        
-        normalized_efficiency = move["efficiency"] / max_efficiency if max_efficiency > 0 else 0
-        normalized_saving = move["saving"] / max_saving if max_saving > 0 else 0
-        
-        return efficiency_weight * normalized_efficiency + savings_weight * normalized_saving
-    
-    # Sort by composite score
-    all_moves.sort(key=calculate_score, reverse=True)
+    if scenario_type == "max_savings":
+        # Sort by absolute savings (highest first)
+        all_moves.sort(key=lambda x: x["saving"], reverse=True)
+    else:  # preference_optimized
+        # Sort by efficiency (savings percentage)
+        all_moves.sort(key=lambda x: x["efficiency"], reverse=True)
     
     # Track location capacities
     location_counts = defaultdict(int)
@@ -245,7 +250,7 @@ def smart_move_selection(all_moves, target_savings, constraints):
 # Main app
 def main():
     st.title("🚀 Enhanced Employee Cost Optimization Tool")
-    st.write("Advanced tool for optimizing employee costs with user-specified target locations and positions.")
+    st.write("Advanced tool for optimizing employee costs with preference-based constraints and multiple optimization scenarios.")
     
     # Get employee data
     employee_data = get_employee_data()
@@ -259,10 +264,10 @@ def main():
         st.session_state.current_selections = []
     
     if "optimization_results" not in st.session_state:
-        st.session_state.optimization_results = None
+        st.session_state.optimization_results = {}
     
-    if "optimization_message" not in st.session_state:
-        st.session_state.optimization_message = ""
+    if "optimization_messages" not in st.session_state:
+        st.session_state.optimization_messages = {}
     
     # Constraints section in sidebar
     st.sidebar.subheader("🎯 Optimization Constraints")
@@ -285,18 +290,10 @@ def main():
     allow_role_changes = st.sidebar.checkbox("Allow role/designation changes", value=True)
     protect_senior_roles = st.sidebar.checkbox("Protect senior roles from demotion", value=True)
     
-    # Algorithm tuning
-    st.sidebar.subheader("⚙️ Algorithm Parameters")
-    efficiency_weight = st.sidebar.slider("Efficiency Weight", 0.0, 1.0, 0.6, 0.1)
-    savings_weight = 1.0 - efficiency_weight
-    st.sidebar.write(f"Savings Weight: {savings_weight:.1f}")
-    
     constraints = {
         "location_limits": location_limits,
         "allow_role_changes": allow_role_changes,
-        "protect_senior_roles": protect_senior_roles,
-        "efficiency_weight": efficiency_weight,
-        "savings_weight": savings_weight
+        "protect_senior_roles": protect_senior_roles
     }
     
     # Data exploration section
@@ -318,222 +315,88 @@ def main():
         )
         st.plotly_chart(fig, use_container_width=True)
     
-    # Main content area
-    st.subheader("👥 Employee Selection & Target Destinations")
+    # Employee selection section
+    st.sidebar.subheader("👥 Employee Selection")
     
-    # Add employee selection with target destinations
-    with st.form("employee_selection_form"):
-        col1, col2 = st.columns(2)
+    # Add employee selection with preferences
+    with st.sidebar.form("employee_selection_form"):
+        designation = st.selectbox("Current Designation", DESIGNATIONS)
+        location = st.selectbox("Current Location", LOCATIONS)
+        positions = st.number_input("Number of Positions", min_value=1, max_value=100, value=1)
         
-        with col1:
-            st.write("**Current Employee Details:**")
-            designation = st.selectbox("Current Designation", DESIGNATIONS)
-            location = st.selectbox("Current Location", LOCATIONS)
-            positions = st.number_input("Number of Positions", min_value=1, max_value=100, value=1)
+        st.write("**Preferred Destinations:**")
+        preferred_locations = st.multiselect(
+            "Preferred Locations (leave empty for any)",
+            LOCATIONS,
+            default=[]
+        )
         
-        with col2:
-            st.write("**Target Destination:**")
-            target_designation = st.selectbox("Target Designation", DESIGNATIONS, key="target_des")
-            target_location = st.selectbox("Target Location", LOCATIONS, key="target_loc")
-            
-            # Show potential savings preview
-            if designation and location and target_designation and target_location:
-                current_cost = employee_data[
-                    (employee_data["Designation"] == designation) & 
-                    (employee_data["Location"] == location)
-                ]["Annualized_Rate"].values[0]
-                
-                target_cost = employee_data[
-                    (employee_data["Designation"] == target_designation) & 
-                    (employee_data["Location"] == target_location)
-                ]["Annualized_Rate"].values[0]
-                
-                savings_per_position = current_cost - target_cost
-                st.metric("Savings per Position", f"${savings_per_position:,.2f}", 
-                         f"{(savings_per_position/current_cost)*100:.1f}%" if current_cost > 0 else "0%")
+        preferred_designations = st.multiselect(
+            "Preferred Designations (leave empty for any)",
+            DESIGNATIONS,
+            default=[]
+        )
         
-        submitted = st.form_submit_button("Add Employee Group")
+        submitted = st.form_submit_button("Add Selection")
         
         if submitted:
             st.session_state.current_selections.append({
                 "designation": designation,
                 "location": location,
                 "positions": positions,
-                "target_designation": target_designation,
-                "target_location": target_location
+                "preferred_locations": preferred_locations,
+                "preferred_designations": preferred_designations
             })
-            st.session_state.optimization_results = None
-        
+            st.session_state.optimization_results = {}
+            st.session_state.optimization_messages = {}
+    
+    # Reset button
+    if st.sidebar.button("🔄 Reset All Selections"):
+        st.session_state.current_selections = []
+        st.session_state.optimization_results = {}
+        st.session_state.optimization_messages = {}
+    
     # Display current selections
+    st.subheader("📋 Current Employee Selection")
+    
     if not st.session_state.current_selections:
-        st.info("No employee groups selected yet.")
+        st.info("No employees selected yet. Use the sidebar to add selections.")
     else:
-        # Display as table with enhanced formatting including target destinations
+        # Display as table with enhanced formatting including preferences
         selections_with_costs = []
         for i, selection in enumerate(st.session_state.current_selections):
-            current_rate = employee_data[
+            rate = employee_data[
                 (employee_data["Designation"] == selection["designation"]) & 
                 (employee_data["Location"] == selection["location"])
             ]["Annualized_Rate"].values[0]
             
-            target_rate = employee_data[
-                (employee_data["Designation"] == selection["target_designation"]) & 
-                (employee_data["Location"] == selection["target_location"])
-            ]["Annualized_Rate"].values[0]
+            total_cost = rate * selection["positions"]
             
-            current_total_cost = current_rate * selection["positions"]
-            target_total_cost = target_rate * selection["positions"]
-            savings = current_total_cost - target_total_cost
+            pref_locations = ", ".join(selection.get("preferred_locations", [])) or "Any"
+            pref_designations = ", ".join(selection.get("preferred_designations", [])) or "Any"
             
             selections_with_costs.append({
                 "ID": i + 1,
-                "Current": f"{selection['designation']} - {selection['location']}",
-                "Target": f"{selection['target_designation']} - {selection['target_location']}",
+                "Current Designation": selection["designation"],
+                "Current Location": selection["location"],
                 "Positions": selection["positions"],
-                "Current Cost": f"${current_total_cost:,.2f}",
-                "Target Cost": f"${target_total_cost:,.2f}",
-                "Potential Savings": f"${savings:,.2f}"
+                "Preferred Locations": pref_locations,
+                "Preferred Designations": pref_designations,
+                "Cost per Position": f"${rate:,.2f}",
+                "Total Cost": f"${total_cost:,.2f}"
             })
         
         st.dataframe(pd.DataFrame(selections_with_costs), use_container_width=True)
         
-        # Calculate and display totals
-        total_current_cost = sum([
-            employee_data[
-                (employee_data["Designation"] == s["designation"]) & 
-                (employee_data["Location"] == s["location"])
-            ]["Annualized_Rate"].values[0] * s["positions"]
-            for s in st.session_state.current_selections
-        ])
-        
-        total_target_cost = sum([
-            employee_data[
-                (employee_data["Designation"] == s["target_designation"]) & 
-                (employee_data["Location"] == s["target_location"])
-            ]["Annualized_Rate"].values[0] * s["positions"]
-            for s in st.session_state.current_selections
-        ])
-        
-        total_potential_savings = total_current_cost - total_target_cost
-        
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("💰 Current Total Cost", f"${total_current_cost:,.2f}")
-        col2.metric("🎯 Target Total Cost", f"${total_target_cost:,.2f}")
-        col3.metric("💵 Max Potential Savings", f"${total_potential_savings:,.2f}")
-        col4.metric("👥 Total Positions", sum(s["positions"] for s in st.session_state.current_selections))
-    
-    with col2:
-        st.subheader("🎯 Target Locations & Positions")
-        
-        # Add target location and position selection
-        with st.form("target_selection_form"):
-            st.write("**Add Target Destinations:**")
-            target_designation = st.selectbox("Target Designation", DESIGNATIONS, key="target_des")
-            target_location = st.selectbox("Target Location", LOCATIONS, key="target_loc")
-            
-            target_submitted = st.form_submit_button("Add Target Option")
-            
-            if target_submitted:
-                # Check if this combination already exists
-                exists = any(
-                    t["designation"] == target_designation and t["location"] == target_location 
-                    for t in st.session_state.target_locations_positions
-                )
-                
-                if not exists:
-                    st.session_state.target_locations_positions.append({
-                        "designation": target_designation,
-                        "location": target_location
-                    })
-                    st.session_state.optimization_results = None
-                else:
-                    st.warning("This target combination already exists!")
-        
-        # Display target selections
-        if not st.session_state.target_locations_positions:
-            st.info("No target destinations selected yet.")
-        else:
-            target_display = []
-            for i, target in enumerate(st.session_state.target_locations_positions):
-                # Get cost for this target combination
-                rate = employee_data[
-                    (employee_data["Designation"] == target["designation"]) & 
-                    (employee_data["Location"] == target["location"])
-                ]["Annualized_Rate"].values[0]
-                
-                target_display.append({
-                    "ID": i + 1,
-                    "Target Designation": target["designation"],
-                    "Target Location": target["location"],
-                    "Cost per Position": f"${rate:,.2f}"
-                })
-            
-            st.dataframe(pd.DataFrame(target_display), use_container_width=True)
-            
-            st.metric("🎯 Total Target Options", len(st.session_state.target_locations_positions))
-    
-    with col2:
-        st.subheader("🎯 Target Locations & Positions")
-        
-        # Add target location and position selection
-        with st.form("target_selection_form"):
-            st.write("**Add Target Destinations:**")
-            target_designation = st.selectbox("Target Designation", DESIGNATIONS, key="target_des")
-            target_location = st.selectbox("Target Location", LOCATIONS, key="target_loc")
-            
-            target_submitted = st.form_submit_button("Add Target Option")
-            
-            if target_submitted:
-                # Check if this combination already exists
-                exists = any(
-                    t["designation"] == target_designation and t["location"] == target_location 
-                    for t in st.session_state.target_locations_positions
-                )
-                
-                if not exists:
-                    st.session_state.target_locations_positions.append({
-                        "designation": target_designation,
-                        "location": target_location
-                    })
-                    st.session_state.optimization_results = None
-                else:
-                    st.warning("This target combination already exists!")
-        
-        # Display target selections
-        if not st.session_state.target_locations_positions:
-            st.info("No target destinations selected yet.")
-        else:
-            target_display = []
-            for i, target in enumerate(st.session_state.target_locations_positions):
-                # Get cost for this target combination
-                rate = employee_data[
-                    (employee_data["Designation"] == target["designation"]) & 
-                    (employee_data["Location"] == target["location"])
-                ]["Annualized_Rate"].values[0]
-                
-                target_display.append({
-                    "ID": i + 1,
-                    "Target Designation": target["designation"],
-                    "Target Location": target["location"],
-                    "Cost per Position": f"${rate:,.2f}"
-                })
-            
-            st.dataframe(pd.DataFrame(target_display), use_container_width=True)
-            
-            st.metric("🎯 Total Target Options", len(st.session_state.target_locations_positions))
-    
-    # Reset button
-    if st.button("🔄 Reset All Selections"):
-        st.session_state.current_selections = []
-        st.session_state.optimization_results = None
-        st.session_state.optimization_message = ""
-    
-    # Optimization section
-    if st.session_state.current_selections:
-        st.markdown("---")
-        st.subheader("🚀 Cost Optimization")
-        
+        # Calculate and display total current cost
         total_current_cost = calculate_cost_savings(st.session_state.current_selections, employee_data)
+        
+        col1, col2 = st.columns(2)
+        col1.metric("💰 Total Current Annual Cost", f"${total_current_cost:,.2f}")
+        col2.metric("👥 Total Positions", sum(s["positions"] for s in st.session_state.current_selections))
+        
+        # Optimization section
+        st.subheader("🎯 Cost Optimization")
         
         with st.form("optimization_form"):
             col1, col2 = st.columns(2)
@@ -551,151 +414,134 @@ def main():
                 target_percentage = (target_savings / total_current_cost * 100) if total_current_cost > 0 else 0
                 st.metric("Target Savings %", f"{target_percentage:.1f}%")
             
+            scenario_choice = st.radio(
+                "Optimization Scenario:",
+                ["Both Scenarios", "Maximum Savings Only", "Preference Optimized Only"],
+                index=0
+            )
+            
             optimize_submitted = st.form_submit_button("🚀 Find Optimal Relocations")
             
             if optimize_submitted:
                 with st.spinner("Analyzing optimal relocations..."):
-                    st.session_state.optimization_results, st.session_state.optimization_message = suggest_optimal_relocations_enhanced(
-                        st.session_state.current_selections, 
-                        target_savings, 
-                        employee_data,
-                        constraints
-                    )
+                    scenarios_to_run = []
+                    
+                    if scenario_choice == "Both Scenarios":
+                        scenarios_to_run = [("max_savings", "Maximum Savings"), ("preference_optimized", "Preference Optimized")]
+                    elif scenario_choice == "Maximum Savings Only":
+                        scenarios_to_run = [("max_savings", "Maximum Savings")]
+                    else:
+                        scenarios_to_run = [("preference_optimized", "Preference Optimized")]
+                    
+                    for scenario_type, scenario_name in scenarios_to_run:
+                        result, message = suggest_optimal_relocations_enhanced(
+                            st.session_state.current_selections, 
+                            target_savings, 
+                            employee_data,
+                            constraints,
+                            scenario_type
+                        )
+                        st.session_state.optimization_results[scenario_name] = result
+                        st.session_state.optimization_messages[scenario_name] = message
         
         # Display optimization results
-        if st.session_state.optimization_results is not None:
+        if st.session_state.optimization_results:
             st.markdown("---")
             st.subheader("📈 Optimization Results")
             
-            # Display message
-            st.markdown(st.session_state.optimization_message)
-            
-            if isinstance(st.session_state.optimization_results, list) and st.session_state.optimization_results:
-                results_df = pd.DataFrame(st.session_state.optimization_results)
-                
-                # Calculate metrics
-                total_savings = results_df["saving"].sum()
-                new_cost = total_current_cost - total_savings
-                positions_moved = len(results_df)
-                total_positions = sum(s["positions"] for s in st.session_state.current_selections)
-                
-                # Display key metrics
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("💵 Original Cost", f"${total_current_cost:,.2f}")
-                col2.metric("💰 New Cost", f"${new_cost:,.2f}")
-                col3.metric("📉 Total Savings", f"${total_savings:,.2f}", f"{(total_savings/total_current_cost)*100:.1f}%")
-                col4.metric("🔄 Positions Moved", f"{positions_moved}/{total_positions}", f"{(positions_moved/total_positions)*100:.1f}%")
-                
-                # Detailed relocation table
-                st.subheader("📋 Detailed Relocation Plan")
-                
-                # Format results for display
-                display_df = results_df.copy()
-                display_df["Savings"] = display_df["saving"].apply(lambda x: f"${x:,.2f}")
-                display_df["Efficiency"] = display_df["efficiency"].apply(lambda x: f"{x*100:.1f}%")
-                display_df["Original Cost"] = display_df["original_cost"].apply(lambda x: f"${x:,.2f}")
-                display_df["New Cost"] = display_df["new_cost"].apply(lambda x: f"${x:,.2f}")
-                
-                display_columns = {
-                    "position_id": "Position ID",
-                    "original_designation": "From Designation",
-                    "original_location": "From Location", 
-                    "new_designation": "To Designation",
-                    "new_location": "To Location",
-                    "Original Cost": "Original Cost",
-                    "New Cost": "New Cost",
-                    "Savings": "Savings",
-                    "Efficiency": "Savings %"
-                }
-                
-                final_display_df = display_df.rename(columns=display_columns)[list(display_columns.values())]
-                st.dataframe(final_display_df, use_container_width=True)
-                
-                # Summary by destination
-                st.subheader("📍 Relocation Summary by Destination")
-                
-                summary_data = []
-                for (designation, location), group in results_df.groupby(["new_designation", "new_location"]):
-                    summary_data.append({
-                        "Destination": f"{designation} - {location}",
-                        "Positions": len(group),
-                        "Total Savings": f"${group['saving'].sum():,.2f}",
-                        "Avg Savings per Position": f"${group['saving'].mean():,.2f}"
-                    })
-                
-                st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
-                
-                # Visualizations
-                st.subheader("📊 Relocation Analytics")
-                
-                # Savings by move
-                fig = px.bar(
-                    results_df,
-                    x=range(len(results_df)),
-                    y="saving",
-                    title="Savings by Individual Move",
-                    labels={"x": "Move Number", "saving": "Savings ($)"},
-                    color="saving",
-                    color_continuous_scale="Viridis"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Location flow diagram
-                st.subheader("🌍 Location Flow Analysis")
-                
-                # Before vs After by location
-                location_before = defaultdict(int)
-                location_after = defaultdict(int)
-                
-                # Count original positions
-                for selection in st.session_state.current_selections:
-                    location_before[selection["location"]] += selection["positions"]
-                    location_after[selection["location"]] += selection["positions"]
-                
-                # Apply moves
-                for move in st.session_state.optimization_results:
-                    location_after[move["original_location"]] -= 1
-                    location_after[move["new_location"]] += 1
-                
-                location_comparison = []
-                for location in LOCATIONS:
-                    location_comparison.extend([
-                        {"Location": location, "Count": location_before[location], "Status": "Before"},
-                        {"Location": location, "Count": location_after[location], "Status": "After"}
-                    ])
-                
-                fig = px.bar(
-                    pd.DataFrame(location_comparison),
-                    x="Location",
-                    y="Count",
-                    color="Status",
-                    barmode="group",
-                    title="Position Distribution: Before vs After Relocation"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Cost efficiency analysis
-                fig = px.scatter(
-                    results_df,
-                    x="original_cost",
-                    y="saving",
-                    size="efficiency",
-                    color="new_location",
-                    title="Cost Efficiency Analysis",
-                    labels={"original_cost": "Original Cost ($)", "saving": "Savings ($)"},
-                    hover_data=["original_designation", "new_designation"]
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
+            # Create tabs for different scenarios
+            scenario_names = list(st.session_state.optimization_results.keys())
+            if len(scenario_names) > 1:
+                tabs = st.tabs(scenario_names)
+                tab_containers = tabs
             else:
-                st.warning("⚠️ No optimal relocations found within the specified constraints. Consider:")
-                st.write("• Adjusting target savings amount")
-                st.write("• Increasing location capacity limits")
-                st.write("• Allowing role changes")
-                st.write("• Reviewing your target destinations for better savings potential")
-    
-    else:
-        st.info("👆 Please add employee groups with their target destinations to enable optimization.")
+                tab_containers = [st.container()]
+            
+            for i, scenario_name in enumerate(scenario_names):
+                with tab_containers[i]:
+                    st.subheader(f"📊 {scenario_name} Results")
+                    
+                    # Display message
+                    st.markdown(st.session_state.optimization_messages[scenario_name])
+                    
+                    results = st.session_state.optimization_results[scenario_name]
+                    
+                    if isinstance(results, list) and results:
+                        results_df = pd.DataFrame(results)
+                        
+                        # Calculate metrics
+                        total_savings = results_df["saving"].sum()
+                        new_cost = total_current_cost - total_savings
+                        positions_moved = len(results_df)
+                        total_positions = sum(s["positions"] for s in st.session_state.current_selections)
+                        
+                        # Display key metrics
+                        col1, col2, col3, col4 = st.columns(4)
+                        col1.metric("💵 Original Cost", f"${total_current_cost:,.2f}")
+                        col2.metric("💰 New Cost", f"${new_cost:,.2f}")
+                        col3.metric("📉 Total Savings", f"${total_savings:,.2f}", f"{(total_savings/total_current_cost)*100:.1f}%")
+                        col4.metric("🔄 Positions Moved", f"{positions_moved}/{total_positions}", f"{(positions_moved/total_positions)*100:.1f}%")
+                        
+                        # Detailed relocation table
+                        st.subheader("📋 Detailed Relocation Plan")
+                        
+                        # Format results for display
+                        display_df = results_df.copy()
+                        display_df["Savings"] = display_df["saving"].apply(lambda x: f"${x:,.2f}")
+                        display_df["Efficiency"] = display_df["efficiency"].apply(lambda x: f"{x*100:.1f}%")
+                        display_df["Original Cost"] = display_df["original_cost"].apply(lambda x: f"${x:,.2f}")
+                        display_df["New Cost"] = display_df["new_cost"].apply(lambda x: f"${x:,.2f}")
+                        
+                        display_columns = {
+                            "position_id": "Position ID",
+                            "original_designation": "From Designation",
+                            "original_location": "From Location", 
+                            "new_designation": "To Designation",
+                            "new_location": "To Location",
+                            "Original Cost": "Original Cost",
+                            "New Cost": "New Cost",
+                            "Savings": "Savings",
+                            "Efficiency": "Savings %"
+                        }
+                        
+                        final_display_df = display_df.rename(columns=display_columns)[list(display_columns.values())]
+                        st.dataframe(final_display_df, use_container_width=True)
+                        
+                        # Summary by destination
+                        st.subheader("📍 Relocation Summary by Destination")
+                        
+                        summary_data = []
+                        for (designation, location), group in results_df.groupby(["new_designation", "new_location"]):
+                            summary_data.append({
+                                "Destination": f"{designation} - {location}",
+                                "Positions": len(group),
+                                "Total Savings": f"${group['saving'].sum():,.2f}",
+                                "Avg Savings per Position": f"${group['saving'].mean():,.2f}"
+                            })
+                        
+                        st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
+                        
+                        # Visualizations
+                        st.subheader("📊 Relocation Analytics")
+                        
+                        # Savings by move
+                        fig = px.bar(
+                            results_df,
+                            x=range(len(results_df)),
+                            y="saving",
+                            title=f"Savings by Individual Move - {scenario_name}",
+                            labels={"x": "Move Number", "saving": "Savings ($)"},
+                            color="saving",
+                            color_continuous_scale="Viridis"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                    else:
+                        st.warning("⚠️ No optimal relocations found within the specified constraints. Consider:")
+                        st.write("• Expanding preferred locations/designations")
+                        st.write("• Increasing location capacity limits")
+                        st.write("• Allowing role changes")
+                        st.write("• Adjusting target savings amount")
 
 if __name__ == "__main__":
     main()
